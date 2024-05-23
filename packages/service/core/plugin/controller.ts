@@ -1,10 +1,12 @@
 import { MongoPlugin } from './schema';
-import { FlowModuleTemplateType } from '@fastgpt/global/core/module/type';
-import { FlowNodeTypeEnum } from '@fastgpt/global/core/module/node/constant';
-import { plugin2ModuleIO } from '@fastgpt/global/core/module/utils';
+import { FlowNodeTemplateType } from '@fastgpt/global/core/workflow/type/index.d';
+import { FlowNodeTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
+import { pluginData2FlowNodeIO } from '@fastgpt/global/core/workflow/utils';
 import { PluginSourceEnum } from '@fastgpt/global/core/plugin/constants';
 import type { PluginRuntimeType, PluginTemplateType } from '@fastgpt/global/core/plugin/type.d';
-import { ModuleTemplateTypeEnum } from '@fastgpt/global/core/module/constants';
+import { FlowNodeTemplateTypeEnum } from '@fastgpt/global/core/workflow/constants';
+import { getHandleConfig } from '../../../global/core/workflow/template/utils';
+import { getNanoid } from '@fastgpt/global/common/string/tools';
 
 /* 
   plugin id rule:
@@ -47,30 +49,35 @@ const getPluginTemplateById = async (id: string): Promise<PluginTemplateType> =>
       intro: item.intro,
       showStatus: true,
       source: PluginSourceEnum.personal,
-      modules: item.modules,
-      templateType: ModuleTemplateTypeEnum.personalPlugin
+      nodes: item.modules,
+      edges: item.edges,
+      templateType: FlowNodeTemplateTypeEnum.personalPlugin,
+      isTool: true,
+      nodeVersion: item?.nodeVersion || ''
     };
   }
   return Promise.reject('plugin not found');
 };
 
 /* format plugin modules to plugin preview module */
-export async function getPluginPreviewModule({
-  id
-}: {
-  id: string;
-}): Promise<FlowModuleTemplateType> {
+export async function getPluginPreviewNode({ id }: { id: string }): Promise<FlowNodeTemplateType> {
   const plugin = await getPluginTemplateById(id);
 
   return {
-    id: plugin.id,
+    id: getNanoid(),
+    pluginId: plugin.id,
     templateType: plugin.templateType,
-    flowType: FlowNodeTypeEnum.pluginModule,
+    flowNodeType: FlowNodeTypeEnum.pluginModule,
     avatar: plugin.avatar,
     name: plugin.name,
     intro: plugin.intro,
     showStatus: plugin.showStatus,
-    ...plugin2ModuleIO(plugin.id, plugin.modules)
+    isTool: plugin.isTool,
+    nodeVersion: plugin.nodeVersion,
+    version: '481',
+    sourceHandle: getHandleConfig(true, true, true, true),
+    targetHandle: getHandleConfig(true, true, true, true),
+    ...pluginData2FlowNodeIO(plugin.nodes)
   };
 }
 
@@ -83,6 +90,7 @@ export async function getPluginRuntimeById(id: string): Promise<PluginRuntimeTyp
     name: plugin.name,
     avatar: plugin.avatar,
     showStatus: plugin.showStatus,
-    modules: plugin.modules
+    nodes: plugin.nodes,
+    edges: plugin.edges
   };
 }

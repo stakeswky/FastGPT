@@ -1,7 +1,7 @@
 import { GET, POST, PUT } from '@/web/common/api/request';
 import { hashStr } from '@fastgpt/global/common/string/tools';
 import type { ResLogin } from '@/global/support/api/userRes.d';
-import { UserAuthTypeEnum } from '@fastgpt/global/support/user/constant';
+import { UserAuthTypeEnum } from '@fastgpt/global/support/user/auth/constants';
 import { UserUpdateParams } from '@/types/user';
 import { UserType } from '@fastgpt/global/support/user/type.d';
 import type {
@@ -9,19 +9,20 @@ import type {
   OauthLoginProps,
   PostLoginProps
 } from '@fastgpt/global/support/user/api.d';
+import { GetWXLoginQRResponse } from '@fastgpt/global/support/user/login/api.d';
 
 export const sendAuthCode = (data: {
   username: string;
   type: `${UserAuthTypeEnum}`;
   googleToken: string;
-}) => POST(`/plusApi/support/user/inform/sendAuthCode`, data);
+}) => POST(`/proApi/support/user/inform/sendAuthCode`, data);
 
 export const getTokenLogin = () =>
   GET<UserType>('/support/user/account/tokenLogin', {}, { maxQuantity: 1 });
 export const oauthLogin = (params: OauthLoginProps) =>
-  POST<ResLogin>('/plusApi/support/user/account/login/oauth', params);
+  POST<ResLogin>('/proApi/support/user/account/login/oauth', params);
 export const postFastLogin = (params: FastLoginProps) =>
-  POST<ResLogin>('/plusApi/support/user/account/login/fastLogin', params);
+  POST<ResLogin>('/proApi/support/user/account/login/fastLogin', params);
 
 export const postRegister = ({
   username,
@@ -34,7 +35,7 @@ export const postRegister = ({
   password: string;
   inviterId?: string;
 }) =>
-  POST<ResLogin>(`/plusApi/support/user/account/register/emailAndPhone`, {
+  POST<ResLogin>(`/proApi/support/user/account/register/emailAndPhone`, {
     username,
     code,
     inviterId,
@@ -50,7 +51,7 @@ export const postFindPassword = ({
   code: string;
   password: string;
 }) =>
-  POST<ResLogin>(`/plusApi/support/user/account/password/updateByCode`, {
+  POST<ResLogin>(`/proApi/support/user/account/password/updateByCode`, {
     username,
     code,
     password: hashStr(password)
@@ -72,7 +73,8 @@ export const loginOut = () => GET('/support/user/account/loginout');
 
 export const putUserInfo = (data: UserUpdateParams) => PUT('/support/user/account/update', data);
 
-/* team limit */
-export const checkTeamExportDatasetLimit = (datasetId: string) =>
-  GET(`/support/user/team/limit/exportDatasetLimit`, { datasetId });
-export const checkTeamWebSyncLimit = () => GET(`/support/user/team/limit/webSyncLimit`);
+export const getWXLoginQR = () =>
+  GET<GetWXLoginQRResponse>('/proApi/support/user/account/login/wx/getQR');
+
+export const getWXLoginResult = (code: string) =>
+  GET<ResLogin>(`/proApi/support/user/account/login/wx/getResult`, { code });

@@ -1,9 +1,20 @@
 import {
-  DatasetCollectionTrainingModeEnum,
+  TrainingModeEnum,
   DatasetCollectionTypeEnum
-} from '@fastgpt/global/core/dataset/constant';
+} from '@fastgpt/global/core/dataset/constants';
 import type { CreateDatasetCollectionParams } from '@fastgpt/global/core/dataset/api.d';
 import { MongoDatasetCollection } from './schema';
+import {
+  CollectionWithDatasetType,
+  DatasetCollectionSchemaType
+} from '@fastgpt/global/core/dataset/type';
+import { MongoDatasetTraining } from '../training/schema';
+import { MongoDatasetData } from '../data/schema';
+import { delImgByRelatedId } from '../../../common/file/image/controller';
+import { deleteDatasetDataVector } from '../../../common/vectorStore/controller';
+import { delFileByFileIdList } from '../../../common/file/gridfs/controller';
+import { BucketNameEnum } from '@fastgpt/global/common/file/constants';
+import { ClientSession } from '../../../common/mongo';
 
 export async function createOneCollection({
   teamId,
@@ -12,45 +23,70 @@ export async function createOneCollection({
   parentId,
   datasetId,
   type,
-  trainingType = DatasetCollectionTrainingModeEnum.manual,
-  chunkSize = 0,
+
+  trainingType = TrainingModeEnum.chunk,
+  chunkSize = 512,
+  chunkSplitter,
+  qaPrompt,
+
   fileId,
   rawLink,
-  qaPrompt,
+
+  externalFileId,
+  externalFileUrl,
+
   hashRawText,
   rawTextLength,
   metadata = {},
+  session,
   ...props
-}: CreateDatasetCollectionParams & { teamId: string; tmbId: string; [key: string]: any }) {
-  const { _id } = await MongoDatasetCollection.create({
-    ...props,
-    teamId,
-    tmbId,
-    parentId: parentId || null,
-    datasetId,
-    name,
-    type,
-    trainingType,
-    chunkSize,
-    fileId,
-    rawLink,
-    qaPrompt,
-    rawTextLength,
-    hashRawText,
-    metadata
-  });
+}: CreateDatasetCollectionParams & {
+  teamId: string;
+  tmbId: string;
+  [key: string]: any;
+  session?: ClientSession;
+}) {
+  const [collection] = await MongoDatasetCollection.create(
+    [
+      {
+        ...props,
+        teamId,
+        tmbId,
+        parentId: parentId || null,
+        datasetId,
+        name,
+        type,
+
+        trainingType,
+        chunkSize,
+        chunkSplitter,
+        qaPrompt,
+
+        fileId,
+        rawLink,
+        externalFileId,
+        externalFileUrl,
+
+        rawTextLength,
+        hashRawText,
+        metadata
+      }
+    ],
+    { session }
+  );
 
   // create default collection
   if (type === DatasetCollectionTypeEnum.folder) {
     await createDefaultCollection({
       datasetId,
-      parentId: _id,
+      parentId: collection._id,
       teamId,
-      tmbId
+      tmbId,
+      session
     });
   }
 
-  return _id;
+  return collection;
 }
 
 // create default collection
@@ -59,41 +95,115 @@ export function createDefaultCollection({
   datasetId,
   parentId,
   teamId,
-  tmbId
+  tmbId,
+  session
 }: {
   name?: '手动录入' | '手动标注';
   datasetId: string;
   parentId?: string;
   teamId: string;
   tmbId: string;
+  session?: ClientSession;
 }) {
-  return MongoDatasetCollection.create({
-    name,
-    teamId,
-    tmbId,
-    datasetId,
-    parentId,
-    type: DatasetCollectionTypeEnum.virtual,
-    trainingType: DatasetCollectionTrainingModeEnum.manual,
-    chunkSize: 0,
-    updateTime: new Date('2099')
-  });
+  return MongoDatasetCollection.create(
+    [
+      {
+        name,
+        teamId,
+        tmbId,
+        datasetId,
+        parentId,
+        type: DatasetCollectionTypeEnum.virtual,
+        trainingType: TrainingModeEnum.chunk,
+        chunkSize: 0,
+        updateTime: new Date('2099')
+      }
+    ],
+    { session }
+  );
 }
 
-// check same collection
-export const getSameRawTextCollection = async ({
-  datasetId,
-  hashRawText
+/* delete collection related images/files */
+export const delCollectionRelatedSource = async ({
+  collections,
+  session
 }: {
-  datasetId: string;
-  hashRawText?: string;
+  collections: (CollectionWithDatasetType | DatasetCollectionSchemaType)[];
+  session: ClientSession;
 }) => {
-  if (!hashRawText) return undefined;
+  if (collections.length === 0) return;
 
-  const collection = await MongoDatasetCollection.findOne({
-    datasetId,
-    hashRawText
+  const teamId = collections[0].teamId;
+
+  if (!teamId) return Promise.reject('teamId is not exist');
+
+  const fileIdList = collections.map((item) => item?.fileId || '').filter(Boolean);
+  const relatedImageIds = collections
+    .map((item) => item?.metadata?.relatedImgId || '')
+    .filter(Boolean);
+
+  // delete images
+  await delImgByRelatedId({
+    teamId,
+    relateIds: relatedImageIds,
+    session
   });
-
-  return collection;
+  // delete files
+  await delFileByFileIdList({
+    bucketName: BucketNameEnum.dataset,
+    fileIdList
+  });
 };
+/**
+ * delete collection and it related data
+ */
+export async function delCollectionAndRelatedSources({
+  collections,
+  session
+}: {
+  collections: (CollectionWithDatasetType | DatasetCollectionSchemaType)[];
+  session: ClientSession;
+}) {
+  if (collections.length === 0) return;
+
+  const teamId = collections[0].teamId;
+
+  if (!teamId) return Promise.reject('teamId is not exist');
+
+  const datasetIds = Array.from(
+    new Set(
+      collections.map((item) => {
+        if (typeof item.datasetId === 'string') {
+          return String(item.datasetId);
+        }
+        return String(item.datasetId._id);
+      })
+    )
+  );
+  const collectionIds = collections.map((item) => String(item._id));
+
+  await delCollectionRelatedSource({ collections, session });
+
+  // delete training data
+  await MongoDatasetTraining.deleteMany({
+    teamId,
+    datasetIds: { $in: datasetIds },
+    collectionId: { $in: collectionIds }
+  });
+  // delete dataset.datas
+  await MongoDatasetData.deleteMany(
+    { teamId, datasetIds: { $in: datasetIds }, collectionId: { $in: collectionIds } },
+    { session }
+  );
+
+  // delete collections
+  await MongoDatasetCollection.deleteMany(
+    {
+      _id: { $in: collectionIds }
+    },
+    { session }
+  );
+
+  // no session delete: delete files, vector data
+  await deleteDatasetDataVector({ teamId, datasetIds, collectionIds });
+}

@@ -4,52 +4,57 @@ import { useSelectFile } from '@/web/common/file/hooks/useSelectFile';
 import { useForm } from 'react-hook-form';
 import { compressImgFileAndUpload } from '@/web/common/file/controller';
 import { getErrText } from '@fastgpt/global/common/error/utils';
-import { useToast } from '@/web/common/hooks/useToast';
+import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useRouter } from 'next/router';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
-import { useRequest } from '@/web/common/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { delOnePlugin, postCreatePlugin, putUpdatePlugin } from '@/web/core/plugin/api';
 import Avatar from '@/components/Avatar';
 import MyTooltip from '@/components/MyTooltip';
-import MyModal from '@/components/MyModal';
+import MyModal from '@fastgpt/web/components/common/MyModal';
 import { useTranslation } from 'next-i18next';
-import { useConfirm } from '@/web/common/hooks/useConfirm';
+import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { CreateOnePluginParams } from '@fastgpt/global/core/plugin/controller';
 import { customAlphabet } from 'nanoid';
+import { MongoImageTypeEnum } from '@fastgpt/global/common/file/image/constants';
+import { PluginTypeEnum } from '@fastgpt/global/core/plugin/constants';
+import { useWorkflowStore } from '@/web/core/workflow/store/workflow';
+import { EditFormType } from './type';
+import { FlowNodeTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
 const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz1234567890', 12);
 
-export type FormType = CreateOnePluginParams & {
-  id?: string;
-};
-export const defaultForm: FormType = {
+export const defaultForm: EditFormType = {
   avatar: '/icon/logo.svg',
   name: '',
   intro: '',
+  parentId: null,
+  type: PluginTypeEnum.custom,
   modules: [
     {
-      moduleId: nanoid(),
-      name: '定义插件输入',
-      avatar: '/imgs/module/input.png',
-      flowType: 'pluginInput',
+      nodeId: nanoid(),
+      name: '自定义插件输入',
+      avatar: '/imgs/workflow/input.png',
+      flowNodeType: FlowNodeTypeEnum.pluginInput,
       showStatus: false,
       position: {
         x: 616.4226348688949,
         y: -165.05298493910115
       },
+      version: '481',
       inputs: [],
       outputs: []
     },
     {
-      moduleId: nanoid(),
-      name: '定义插件输出',
-      avatar: '/imgs/module/output.png',
-      flowType: 'pluginOutput',
+      nodeId: nanoid(),
+      name: '自定义插件输出',
+      avatar: '/imgs/workflow/output.png',
+      flowNodeType: FlowNodeTypeEnum.pluginOutput,
       showStatus: false,
       position: {
         x: 1607.7142331269126,
         y: -151.8669210746189
       },
+      version: '481',
       inputs: [],
       outputs: []
     }
@@ -62,7 +67,7 @@ const CreateModal = ({
   onSuccess,
   onDelete
 }: {
-  defaultValue?: FormType;
+  defaultValue?: EditFormType;
   onClose: () => void;
   onSuccess: () => void;
   onDelete: () => void;
@@ -71,14 +76,17 @@ const CreateModal = ({
   const [refresh, setRefresh] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
+  const { parentId } = router.query as { parentId: string };
+
   const { isPc } = useSystemStore();
+  const { loadTeamPluginNodeTemplates } = useWorkflowStore();
   const { openConfirm, ConfirmModal } = useConfirm({
     title: t('common.Delete Tip'),
     content: t('plugin.Confirm Delete')
   });
 
-  const { register, setValue, getValues, handleSubmit } = useForm<FormType>({
-    defaultValues: defaultValue
+  const { register, setValue, getValues, handleSubmit } = useForm<EditFormType>({
+    defaultValues: { ...defaultValue, parentId: parentId || null }
   });
 
   const { File, onOpen: onOpenSelectFile } = useSelectFile({
@@ -92,6 +100,7 @@ const CreateModal = ({
       if (!file) return;
       try {
         const src = await compressImgFileAndUpload({
+          type: MongoImageTypeEnum.pluginAvatar,
           file,
           maxW: 300,
           maxH: 300
@@ -109,19 +118,20 @@ const CreateModal = ({
   );
 
   const { mutate: onclickCreate, isLoading: creating } = useRequest({
-    mutationFn: async (data: FormType) => {
+    mutationFn: async (data: EditFormType) => {
       return postCreatePlugin(data);
     },
     onSuccess(id: string) {
       router.push(`/plugin/edit?pluginId=${id}`);
       onSuccess();
       onClose();
+      loadTeamPluginNodeTemplates();
     },
     successToast: t('common.Create Success'),
     errorToast: t('common.Create Failed')
   });
   const { mutate: onclickUpdate, isLoading: updating } = useRequest({
-    mutationFn: async (data: FormType) => {
+    mutationFn: async (data: EditFormType) => {
       if (!data.id) return Promise.resolve('');
       // @ts-ignore
       return putUpdatePlugin(data);
@@ -161,34 +171,41 @@ const CreateModal = ({
       isCentered={!isPc}
     >
       <ModalBody>
-        <Box color={'myGray.800'} fontWeight={'bold'}>
-          {t('plugin.Set Name')}
-        </Box>
-        <Flex mt={3} alignItems={'center'}>
-          <MyTooltip label={t('common.Set Avatar')}>
-            <Avatar
-              flexShrink={0}
-              src={getValues('avatar')}
-              w={['28px', '32px']}
-              h={['28px', '32px']}
-              cursor={'pointer'}
-              borderRadius={'md'}
-              onClick={onOpenSelectFile}
+        <>
+          <Box color={'myGray.800'} fontWeight={'bold'}>
+            {t('plugin.Set Name')}
+          </Box>
+          <Flex mt={3} alignItems={'center'}>
+            <MyTooltip label={t('common.Set Avatar')}>
+              <Avatar
+                flexShrink={0}
+                src={getValues('avatar')}
+                w={['28px', '32px']}
+                h={['28px', '32px']}
+                cursor={'pointer'}
+                borderRadius={'md'}
+                onClick={onOpenSelectFile}
+              />
+            </MyTooltip>
+            <Input
+              flex={1}
+              ml={4}
+              autoFocus={!defaultValue.id}
+              bg={'myWhite.600'}
+              {...register('name', {
+                required: t("common.Name Can't Be Empty")
+              })}
             />
-          </MyTooltip>
-          <Input
-            flex={1}
-            ml={4}
-            autoFocus={!defaultValue.id}
-            bg={'myWhite.600'}
-            {...register('name', {
-              required: t("common.Name Can't Be Empty")
-            })}
-          />
-        </Flex>
+          </Flex>
+        </>
         <Box mt={3}>
           <Box mb={1}>{t('plugin.Intro')}</Box>
-          <Textarea {...register('intro')} bg={'myWhite.600'} rows={5} />
+          <Textarea
+            {...register('intro')}
+            bg={'myWhite.600'}
+            rows={5}
+            placeholder={t('core.plugin.Intro placeholder')}
+          />
         </Box>
       </ModalBody>
 

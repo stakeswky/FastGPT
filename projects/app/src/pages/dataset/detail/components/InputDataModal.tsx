@@ -1,44 +1,36 @@
 import React, { useMemo, useState } from 'react';
-import { Box, Flex, Button, Textarea, BoxProps, Image, useTheme, Grid } from '@chakra-ui/react';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { Box, Flex, Button, Textarea, useTheme, Grid, HStack } from '@chakra-ui/react';
+import { UseFormRegister, useFieldArray, useForm } from 'react-hook-form';
 import {
   postInsertData2Dataset,
   putDatasetDataById,
   delOneDatasetDataById,
-  getDatasetCollectionById
+  getDatasetCollectionById,
+  getDatasetDataItemById
 } from '@/web/core/dataset/api';
-import { useToast } from '@/web/common/hooks/useToast';
-import { getErrText } from '@fastgpt/global/common/error/utils';
+import { useToast } from '@fastgpt/web/hooks/useToast';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import MyModal from '@/components/MyModal';
+import MyModal from '@fastgpt/web/components/common/MyModal';
 import MyTooltip from '@/components/MyTooltip';
-import { QuestionOutlineIcon } from '@chakra-ui/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'next-i18next';
-import { getFileAndOpen } from '@/web/core/dataset/utils';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
-import { useRequest } from '@/web/common/hooks/useRequest';
-import { countPromptTokens } from '@fastgpt/global/common/string/tiktoken';
-import { useConfirm } from '@/web/common/hooks/useConfirm';
-import { getDefaultIndex, getSourceNameIcon } from '@fastgpt/global/core/dataset/utils';
-import { feConfigs, vectorModelList } from '@/web/common/system/staticData';
-import { DatasetDataIndexTypeEnum } from '@fastgpt/global/core/dataset/constant';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
+import { getDefaultIndex } from '@fastgpt/global/core/dataset/utils';
 import { DatasetDataIndexItemType } from '@fastgpt/global/core/dataset/type';
 import SideTabs from '@/components/SideTabs';
-import { useLoading } from '@/web/common/hooks/useLoading';
 import DeleteIcon from '@fastgpt/web/components/common/Icon/delete';
-import { defaultCollectionDetail } from '@/constants/dataset';
+import { defaultCollectionDetail } from '@/web/core/dataset/constants';
 import { getDocPath } from '@/web/common/system/doc';
+import RawSourceBox from '@/components/core/dataset/RawSourceBox';
+import MyBox from '@fastgpt/web/components/common/MyBox';
+import { getErrText } from '@fastgpt/global/common/error/utils';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
+import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
 
-export type RawSourceTextProps = BoxProps & {
-  sourceName?: string;
-  sourceId?: string;
-  canView?: boolean;
-};
 export type InputDataType = {
-  id?: string;
   q: string;
-  a?: string;
+  a: string;
   indexes: (Omit<DatasetDataIndexItemType, 'dataId'> & {
     dataId?: string; // pg data id
   })[];
@@ -53,26 +45,26 @@ enum TabEnum {
 
 const InputDataModal = ({
   collectionId,
+  dataId,
   defaultValue,
   onClose,
   onSuccess,
   onDelete
 }: {
   collectionId: string;
-  defaultValue: InputDataType;
+  dataId?: string;
+  defaultValue?: { q: string; a?: string };
   onClose: () => void;
-  onSuccess: (data: InputDataType) => void;
+  onSuccess: (data: InputDataType & { dataId: string }) => void;
   onDelete?: () => void;
 }) => {
   const { t } = useTranslation();
   const theme = useTheme();
   const { toast } = useToast();
-  const { Loading } = useLoading();
   const [currentTab, setCurrentTab] = useState(TabEnum.content);
+  const { vectorModelList } = useSystemStore();
 
-  const { register, handleSubmit, reset, control } = useForm<InputDataType>({
-    defaultValues: defaultValue
-  });
+  const { register, handleSubmit, reset, control } = useForm<InputDataType>();
   const {
     fields: indexes,
     append: appendIndexes,
@@ -89,20 +81,51 @@ const InputDataModal = ({
       id: TabEnum.index,
       icon: 'kbTest'
     },
-    ...(defaultValue.id
+    ...(dataId
       ? [{ label: t('dataset.data.edit.Delete'), id: TabEnum.delete, icon: 'delete' }]
       : []),
     { label: t('dataset.data.edit.Course'), id: TabEnum.doc, icon: 'common/courseLight' }
   ];
 
   const { ConfirmModal, openConfirm } = useConfirm({
-    content: t('dataset.data.Delete Tip')
+    content: t('dataset.data.Delete Tip'),
+    type: 'delete'
   });
 
   const { data: collection = defaultCollectionDetail } = useQuery(
     ['loadCollectionId', collectionId],
     () => {
       return getDatasetCollectionById(collectionId);
+    }
+  );
+  const { isFetching: isFetchingData } = useQuery(
+    ['getDatasetDataItemById', dataId],
+    () => {
+      if (dataId) return getDatasetDataItemById(dataId);
+      return null;
+    },
+    {
+      onSuccess(res) {
+        if (res) {
+          reset({
+            q: res.q,
+            a: res.a,
+            indexes: res.indexes
+          });
+        } else if (defaultValue) {
+          reset({
+            q: defaultValue.q,
+            a: defaultValue.a
+          });
+        }
+      },
+      onError(err) {
+        toast({
+          status: 'error',
+          title: t(getErrText(err))
+        });
+        onClose();
+      }
     }
   );
 
@@ -112,7 +135,7 @@ const InputDataModal = ({
       vectorModelList[0];
 
     return vectorModel?.maxToken || 3000;
-  }, [collection.datasetId.vectorModel]);
+  }, [collection.datasetId.vectorModel, vectorModelList]);
 
   // import new data
   const { mutate: sureImportData, isLoading: isImporting } = useRequest({
@@ -121,26 +144,30 @@ const InputDataModal = ({
         setCurrentTab(TabEnum.content);
         return Promise.reject(t('dataset.data.input is empty'));
       }
-      if (countPromptTokens(e.q) >= maxToken) {
-        return toast({
-          title: t('core.dataset.data.Too Long'),
-          status: 'warning'
-        });
+
+      const totalLength = e.q.length + (e.a?.length || 0);
+      if (totalLength >= maxToken * 1.4) {
+        return Promise.reject(t('core.dataset.data.Too Long'));
       }
 
       const data = { ...e };
 
-      data.id = await postInsertData2Dataset({
+      const dataId = await postInsertData2Dataset({
         collectionId: collection._id,
         q: e.q,
         a: e.a,
         // remove dataId
-        indexes: e.indexes.map((index) =>
-          index.defaultIndex ? getDefaultIndex({ q: e.q, a: e.a }) : index
-        )
+        indexes:
+          e.indexes?.map((index) => ({
+            ...index,
+            dataId: undefined
+          })) || []
       });
 
-      return data;
+      return {
+        ...data,
+        dataId
+      };
     },
     successToast: t('dataset.data.Input Success Tip'),
     onSuccess(e) {
@@ -148,7 +175,7 @@ const InputDataModal = ({
         ...e,
         q: '',
         a: '',
-        indexes: [getDefaultIndex({ q: e.q, a: e.a, dataId: `${Date.now()}` })]
+        indexes: []
       });
 
       onSuccess(e);
@@ -158,17 +185,22 @@ const InputDataModal = ({
   // update
   const { mutate: onUpdateData, isLoading: isUpdating } = useRequest({
     mutationFn: async (e: InputDataType) => {
-      if (!e.id) return e;
+      if (!dataId) return e;
 
       // not exactly same
       await putDatasetDataById({
-        id: e.id,
-        q: e.q,
-        a: e.a,
-        indexes: e.indexes
+        id: dataId,
+        ...e,
+        indexes:
+          e.indexes?.map((index) =>
+            index.defaultIndex ? getDefaultIndex({ q: e.q, a: e.a, dataId: index.dataId }) : index
+          ) || []
       });
 
-      return e;
+      return {
+        dataId,
+        ...e
+      };
     },
     successToast: t('dataset.data.Update Success Tip'),
     errorToast: t('common.error.unKnow'),
@@ -180,8 +212,8 @@ const InputDataModal = ({
   // delete
   const { mutate: onDeleteData, isLoading: isDeleting } = useRequest({
     mutationFn: () => {
-      if (!onDelete || !defaultValue.id) return Promise.resolve(null);
-      return delOneDatasetDataById(defaultValue.id);
+      if (!onDelete || !dataId) return Promise.resolve(null);
+      return delOneDatasetDataById(dataId);
     },
     onSuccess() {
       if (!onDelete) return;
@@ -192,16 +224,20 @@ const InputDataModal = ({
     errorToast: t('common.error.unKnow')
   });
 
-  const loading = useMemo(() => isImporting || isUpdating, [isImporting, isUpdating]);
+  const isLoading = useMemo(
+    () => isImporting || isUpdating || isFetchingData || isDeleting,
+    [isImporting, isUpdating, isFetchingData, isDeleting]
+  );
 
   return (
     <MyModal isOpen={true} isCentered w={'90vw'} maxW={'1440px'} h={'90vh'}>
-      <Flex h={'100%'}>
-        <Box p={5} borderRight={theme.borders.base}>
-          <RawSourceText
-            w={'200px'}
+      <MyBox isLoading={isLoading} display={'flex'} h={'100%'}>
+        <Box p={5} bg={'myGray.50'} borderLeftRadius={'md'} borderRight={theme.borders.base}>
+          <RawSourceBox
+            w={'210px'}
             className="textEllipsis3"
             whiteSpace={'pre-wrap'}
+            collectionId={collection._id}
             sourceName={collection.sourceName}
             sourceId={collection.sourceId}
             mb={6}
@@ -215,82 +251,46 @@ const InputDataModal = ({
                 return openConfirm(onDeleteData)();
               }
               if (e === TabEnum.doc) {
-                return window.open(getDocPath('/docs/use-cases/datasetengine'), '_blank');
+                return window.open(getDocPath('/docs/course/dataset_engine'), '_blank');
               }
               setCurrentTab(e);
             }}
           />
         </Box>
-        <Flex flexDirection={'column'} py={3} flex={1} h={'100%'}>
-          <Box fontSize={'lg'} px={5} fontWeight={'bold'} mb={4}>
+        <Flex flexDirection={'column'} pb={8} flex={1} h={'100%'}>
+          <Box fontSize={'lg'} px={5} py={3} fontWeight={'medium'}>
             {currentTab === TabEnum.content && (
-              <>{defaultValue.id ? t('dataset.data.Update Data') : t('dataset.data.Input Data')}</>
+              <>{dataId ? t('dataset.data.Update Data') : t('dataset.data.Input Data')}</>
             )}
             {currentTab === TabEnum.index && <> {t('dataset.data.Index Edit')}</>}
           </Box>
-          <Box flex={1} px={5} overflow={'auto'}>
-            {currentTab === TabEnum.content && (
-              <>
-                <Box>
-                  <Flex alignItems={'center'}>
-                    <Box>
-                      <Box as="span" color={'red.600'}>
-                        *
-                      </Box>
-                      {t('core.dataset.data.Data Content')}
-                    </Box>
-                    <MyTooltip label={t('core.dataset.data.Data Content Tip')}>
-                      <QuestionOutlineIcon ml={1} />
-                    </MyTooltip>
-                  </Flex>
-                  <Textarea
-                    mt={1}
-                    placeholder={t('core.dataset.data.Data Content Placeholder', { maxToken })}
-                    maxLength={maxToken}
-                    rows={12}
-                    bg={'myWhite.400'}
-                    {...register(`q`, {
-                      required: true
-                    })}
-                  />
-                </Box>
-                <Box mt={5}>
-                  <Flex>
-                    <Box>{t('core.dataset.data.Auxiliary Data')}</Box>
-                    <MyTooltip label={t('core.dataset.data.Auxiliary Data Tip')}>
-                      <QuestionOutlineIcon ml={1} />
-                    </MyTooltip>
-                  </Flex>
-                  <Textarea
-                    mt={1}
-                    placeholder={t('core.dataset.data.Auxiliary Data Placeholder', {
-                      maxToken: maxToken * 1.5
-                    })}
-                    bg={'myWhite.400'}
-                    rows={12}
-                    maxLength={maxToken * 1.5}
-                    {...register('a')}
-                  />
-                </Box>
-              </>
-            )}
+          <Box flex={1} px={9} overflow={'auto'}>
+            {currentTab === TabEnum.content && <InputTab maxToken={maxToken} register={register} />}
             {currentTab === TabEnum.index && (
-              <Grid gridTemplateColumns={['1fr', '1fr 1fr']} gridGap={4}>
-                {indexes.map((index, i) => (
+              <Grid mt={3} gridTemplateColumns={['1fr', '1fr 1fr']} gridGap={4}>
+                {indexes?.map((index, i) => (
                   <Box
                     key={index.dataId || i}
-                    p={3}
+                    p={4}
                     borderRadius={'md'}
-                    border={theme.borders.base}
-                    bg={i % 2 !== 0 ? 'myWhite.400' : ''}
+                    border={
+                      index.defaultIndex
+                        ? '1.5px solid var(--light-fastgpt-primary-opacity-01, rgba(51, 112, 255, 0.10))'
+                        : '1.5px solid var(--Gray-Modern-200, #E8EBF0)'
+                    }
+                    bg={index.defaultIndex ? 'primary.50' : 'myGray.25'}
                     _hover={{
                       '& .delete': {
-                        display: index.defaultIndex && indexes.length === 1 ? 'none' : 'block'
+                        display: index.defaultIndex ? 'none' : 'block'
                       }
                     }}
                   >
-                    <Flex mb={1}>
-                      <Box flex={1}>
+                    <Flex mb={2}>
+                      <Box
+                        flex={1}
+                        fontWeight={'medium'}
+                        color={index.defaultIndex ? 'primary.700' : 'myGray.900'}
+                      >
                         {index.defaultIndex
                           ? t('dataset.data.Default Index')
                           : t('dataset.data.Custom Index Number', { number: i })}
@@ -305,16 +305,23 @@ const InputDataModal = ({
                       />
                     </Flex>
                     {index.defaultIndex ? (
-                      <Box>{t('core.dataset.data.Default Index Tip')}</Box>
+                      <Box fontSize={'sm'} fontWeight={'medium'} color={'myGray.600'}>
+                        {t('core.dataset.data.Default Index Tip')}
+                      </Box>
                     ) : (
                       <Textarea
                         maxLength={maxToken}
+                        fontSize={'sm'}
                         rows={10}
                         borderColor={'transparent'}
                         px={0}
+                        pt={0}
                         _focus={{
-                          borderColor: 'primary.400',
-                          px: 3
+                          px: 3,
+                          py: 2,
+                          borderColor: 'primary.500',
+                          boxShadow: '0px 0px 0px 2.4px rgba(51, 112, 255, 0.15)',
+                          bg: 'white'
                         }}
                         placeholder={t('dataset.data.Index Placeholder')}
                         {...register(`indexes.${i}.text`, {
@@ -325,108 +332,107 @@ const InputDataModal = ({
                   </Box>
                 ))}
                 <Flex
-                  flexDirection={'column'}
                   alignItems={'center'}
                   justifyContent={'center'}
                   borderRadius={'md'}
-                  border={theme.borders.base}
+                  color={'myGray.600'}
+                  fontWeight={'medium'}
+                  border={'1.5px solid var(--Gray-Modern-200, #E8EBF0)'}
+                  bg={'myGray.25'}
                   cursor={'pointer'}
                   _hover={{
-                    bg: 'primary.50'
+                    bg: 'primary.50',
+                    color: 'primary.600',
+                    border:
+                      '1.5px solid var(--light-fastgpt-primary-opacity-01, rgba(51, 112, 255, 0.10))'
                   }}
                   minH={'100px'}
                   onClick={() =>
                     appendIndexes({
                       defaultIndex: false,
-                      type: DatasetDataIndexTypeEnum.chunk,
                       text: '',
                       dataId: `${Date.now()}`
                     })
                   }
                 >
-                  <MyIcon name={'common/addCircleLight'} w={'16px'} />
+                  <MyIcon name={'common/addLight'} w={'18px'} mr={1.5} />
                   <Box>{t('dataset.data.Add Index')}</Box>
                 </Flex>
               </Grid>
             )}
           </Box>
-          <Flex justifyContent={'flex-end'} px={5} mt={4}>
-            <Button variant={'whitePrimary'} mr={3} isLoading={loading} onClick={onClose}>
+          {/* footer */}
+          <Flex justifyContent={'flex-end'} px={9} mt={6}>
+            <Button variant={'whiteBase'} mr={3} onClick={onClose}>
               {t('common.Close')}
             </Button>
             <MyTooltip label={collection.canWrite ? '' : t('dataset.data.Can not edit')}>
               <Button
                 isDisabled={!collection.canWrite}
-                isLoading={loading}
                 // @ts-ignore
-                onClick={handleSubmit(defaultValue.id ? onUpdateData : sureImportData)}
+                onClick={handleSubmit(dataId ? onUpdateData : sureImportData)}
               >
-                {defaultValue.id ? t('common.Confirm Update') : t('common.Confirm Import')}
+                {dataId ? t('common.Confirm Update') : t('common.Confirm Import')}
               </Button>
             </MyTooltip>
           </Flex>
         </Flex>
-      </Flex>
+      </MyBox>
       <ConfirmModal />
-      <Loading fixed={false} loading={isDeleting} />
     </MyModal>
   );
 };
 
-export default InputDataModal;
+export default React.memo(InputDataModal);
 
-export function RawSourceText({
-  sourceId,
-  sourceName = '',
-  canView = true,
-  ...props
-}: RawSourceTextProps) {
+const InputTab = ({
+  maxToken,
+  register
+}: {
+  maxToken: number;
+  register: UseFormRegister<InputDataType>;
+}) => {
   const { t } = useTranslation();
-  const { toast } = useToast();
-  const { setLoading } = useSystemStore();
-
-  const canPreview = useMemo(() => !!sourceId && canView, [canView, sourceId]);
-
-  const icon = useMemo(() => getSourceNameIcon({ sourceId, sourceName }), [sourceId, sourceName]);
 
   return (
-    <MyTooltip
-      label={canPreview ? t('file.Click to view file') || '' : ''}
-      shouldWrapChildren={false}
-    >
-      <Box
-        color={'myGray.600'}
-        display={'inline-flex'}
-        whiteSpace={'nowrap'}
-        {...(canPreview
-          ? {
-              cursor: 'pointer',
-              textDecoration: 'underline',
-              onClick: async () => {
-                setLoading(true);
-                try {
-                  await getFileAndOpen(sourceId as string);
-                } catch (error) {
-                  toast({
-                    title: t(getErrText(error, 'error.fileNotFound')),
-                    status: 'error'
-                  });
-                }
-                setLoading(false);
-              }
-            }
-          : {})}
-        {...props}
-      >
-        <Image src={icon} alt="" w={['14px', '16px']} mr={2} />
-        <Box
-          maxW={['200px', '300px']}
-          className={props.className ?? 'textEllipsis'}
-          wordBreak={'break-all'}
-        >
-          {sourceName || t('common.UnKnow Source')}
+    <HStack h={'100%'} spacing={6}>
+      <Flex flexDirection={'column'} w={'50%'} h={'100%'}>
+        <Flex pt={3} pb={2} fontWeight={'medium'} fontSize={'md'} alignItems={'center'}>
+          <Box color={'red.600'}>*</Box>
+          <Box color={'myGray.900'}>{t('core.dataset.data.Main Content')}</Box>
+          <QuestionTip label={t('core.dataset.data.Data Content Tip')} ml={1} />
+        </Flex>
+        <Box flex={'1 0 0'}>
+          <Textarea
+            placeholder={t('core.dataset.data.Data Content Placeholder', { maxToken })}
+            maxLength={maxToken}
+            tabIndex={1}
+            bg={'myGray.50'}
+            h={'full'}
+            {...register(`q`, {
+              required: true
+            })}
+          />
         </Box>
-      </Box>
-    </MyTooltip>
+      </Flex>
+      <Flex flexDirection={'column'} w={'50%'} h={'100%'}>
+        <Flex pt={3} pb={2} fontWeight={'medium'} fontSize={'md'} alignItems={'center'}>
+          <Box color={'myGray.900'}>{t('core.dataset.data.Auxiliary Data')}</Box>
+          <QuestionTip label={t('core.dataset.data.Auxiliary Data Tip')} ml={1} />
+        </Flex>
+        <Box flex={'1 0 0'}>
+          <Textarea
+            placeholder={t('core.dataset.data.Auxiliary Data Placeholder', {
+              maxToken: maxToken * 1.5
+            })}
+            h={'100%'}
+            tabIndex={1}
+            bg={'myGray.50'}
+            maxLength={maxToken * 1.5}
+            {...register('a')}
+          />
+        </Box>
+      </Flex>
+    </HStack>
   );
-}
+};

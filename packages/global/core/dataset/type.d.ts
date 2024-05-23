@@ -3,12 +3,11 @@ import { PermissionTypeEnum } from '../../support/permission/constant';
 import { PushDatasetDataChunkProps } from './api';
 import {
   DatasetCollectionTypeEnum,
-  DatasetDataIndexTypeEnum,
   DatasetStatusEnum,
   DatasetTypeEnum,
   SearchScoreTypeEnum,
   TrainingModeEnum
-} from './constant';
+} from './constants';
 
 /* schema */
 export type DatasetSchemaType = {
@@ -23,13 +22,16 @@ export type DatasetSchemaType = {
   vectorModel: string;
   agentModel: string;
   intro: string;
-  type: `${DatasetTypeEnum}`;
+  type: DatasetTypeEnum;
   status: `${DatasetStatusEnum}`;
   permission: `${PermissionTypeEnum}`;
+
+  // metadata
   websiteConfig?: {
     url: string;
     selector: string;
   };
+  externalReadUrl?: string;
 };
 
 export type DatasetCollectionSchemaType = {
@@ -39,18 +41,28 @@ export type DatasetCollectionSchemaType = {
   datasetId: string;
   parentId?: string;
   name: string;
-  type: `${DatasetCollectionTypeEnum}`;
+  type: DatasetCollectionTypeEnum;
   createTime: Date;
   updateTime: Date;
-  trainingType: `${TrainingModeEnum}`;
+
+  trainingType: TrainingModeEnum;
   chunkSize: number;
-  fileId?: string;
-  rawLink?: string;
+  chunkSplitter?: string;
   qaPrompt?: string;
+
+  tags?: string[];
+
+  fileId?: string; // local file id
+  rawLink?: string; // link url
+  externalFileId?: string; //external file id
+
   rawTextLength?: number;
   hashRawText?: string;
+  externalFileUrl?: string; // external import url
   metadata?: {
     webPageSelector?: string;
+    relatedImgId?: string; // The id of the associated image collections
+
     [key: string]: any;
   };
 };
@@ -58,7 +70,6 @@ export type DatasetCollectionSchemaType = {
 export type DatasetDataIndexItemType = {
   defaultIndex: boolean;
   dataId: string; // pg data id
-  type: `${DatasetDataIndexTypeEnum}`;
   text: string;
 };
 export type DatasetDataSchemaType = {
@@ -76,6 +87,7 @@ export type DatasetDataSchemaType = {
   a: string; // answer or custom content
   fullTextToken: string;
   indexes: DatasetDataIndexItemType[];
+  rebuilding?: boolean;
 };
 
 export type DatasetTrainingSchemaType = {
@@ -88,9 +100,10 @@ export type DatasetTrainingSchemaType = {
   billId: string;
   expireAt: Date;
   lockTime: Date;
-  mode: `${TrainingModeEnum}`;
+  mode: TrainingModeEnum;
   model: string;
   prompt: string;
+  dataId?: string;
   q: string;
   a: string;
   chunkIndex: number;
@@ -106,13 +119,19 @@ export type DatasetDataWithCollectionType = Omit<DatasetDataSchemaType, 'collect
 };
 
 /* ================= dataset ===================== */
+export type DatasetSimpleItemType = {
+  _id: string;
+  avatar: string;
+  name: string;
+  vectorModel: VectorModelItemType;
+};
 export type DatasetListItemType = {
   _id: string;
   parentId: string;
   avatar: string;
   name: string;
   intro: string;
-  type: `${DatasetTypeEnum}`;
+  type: DatasetTypeEnum;
   isOwner: boolean;
   canWrite: boolean;
   permission: `${PermissionTypeEnum}`;
@@ -136,6 +155,7 @@ export type DatasetCollectionItemType = CollectionWithDatasetType & {
 /* ================= data ===================== */
 export type DatasetDataItemType = {
   id: string;
+  teamId: string;
   datasetId: string;
   collectionId: string;
   sourceName: string;
@@ -167,7 +187,7 @@ export type DatasetFileSchema = {
 /* ============= search =============== */
 export type SearchDataResponseItemType = Omit<
   DatasetDataItemType,
-  'indexes' | 'isOwner' | 'canWrite'
+  'teamId' | 'indexes' | 'isOwner' | 'canWrite'
 > & {
   score: { type: `${SearchScoreTypeEnum}`; value: number; index: number }[];
   // score: number;

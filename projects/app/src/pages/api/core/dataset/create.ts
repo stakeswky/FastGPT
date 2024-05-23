@@ -5,7 +5,9 @@ import { MongoDataset } from '@fastgpt/service/core/dataset/schema';
 import type { CreateDatasetParams } from '@/global/core/dataset/api.d';
 import { createDefaultCollection } from '@fastgpt/service/core/dataset/collection/controller';
 import { authUserNotVisitor } from '@fastgpt/service/support/permission/auth/user';
-import { DatasetTypeEnum } from '@fastgpt/global/core/dataset/constant';
+import { DatasetTypeEnum } from '@fastgpt/global/core/dataset/constants';
+import { getLLMModel, getVectorModel, getDatasetModel } from '@fastgpt/service/core/ai/model';
+import { checkTeamDatasetLimit } from '@fastgpt/service/support/permission/teamLimit';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
   try {
@@ -13,14 +15,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const {
       parentId,
       name,
-      type,
+      type = DatasetTypeEnum.dataset,
       avatar,
       vectorModel = global.vectorModels[0].model,
-      agentModel
+      agentModel = getDatasetModel().model
     } = req.body as CreateDatasetParams;
 
-    // 凭证校验
-    const { teamId, tmbId } = await authUserNotVisitor({ req, authToken: true });
+    // auth
+    const { teamId, tmbId } = await authUserNotVisitor({ req, authToken: true, authApiKey: true });
+
+    // check model valid
+    const vectorModelStore = getVectorModel(vectorModel);
+    const agentModelStore = getLLMModel(agentModel);
+    if (!vectorModelStore || !agentModelStore) {
+      throw new Error('vectorModel or qaModel is invalid');
+    }
+
+    // check limit
+    await checkTeamDatasetLimit(teamId);
 
     const { _id } = await MongoDataset.create({
       name,

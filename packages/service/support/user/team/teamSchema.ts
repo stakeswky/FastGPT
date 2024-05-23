@@ -3,7 +3,7 @@ const { Schema, model, models } = connectionMongo;
 import { TeamSchema as TeamType } from '@fastgpt/global/support/user/team/type.d';
 import { userCollectionName } from '../../user/schema';
 import { TeamCollectionName } from '@fastgpt/global/support/user/team/constant';
-import { PRICE_SCALE } from '@fastgpt/global/support/wallet/bill/constants';
+import { NullPermission } from '../../permission/resourcePermission/permisson';
 
 const TeamSchema = new Schema({
   name: {
@@ -13,6 +13,10 @@ const TeamSchema = new Schema({
   ownerId: {
     type: Schema.Types.ObjectId,
     ref: userCollectionName
+  },
+  defaultPermission: {
+    type: Number,
+    default: NullPermission
   },
   avatar: {
     type: String,
@@ -24,14 +28,10 @@ const TeamSchema = new Schema({
   },
   balance: {
     type: Number,
-    default: 2 * PRICE_SCALE
+    default: 0
   },
-  maxSize: {
-    type: Number,
-    default: 5
-  },
-  lastDatasetBillTime: {
-    type: Date
+  teamDomain: {
+    type: String
   },
   limit: {
     lastExportDatasetTime: {
@@ -40,11 +40,23 @@ const TeamSchema = new Schema({
     lastWebsiteSyncTime: {
       type: Date
     }
+  },
+  lafAccount: {
+    token: {
+      type: String
+    },
+    appid: {
+      type: String
+    },
+    pat: {
+      type: String
+    }
   }
 });
 
 try {
-  TeamSchema.index({ lastDatasetBillTime: -1 });
+  TeamSchema.index({ name: 1 });
+  TeamSchema.index({ ownerId: 1 });
 } catch (error) {
   console.log(error);
 }

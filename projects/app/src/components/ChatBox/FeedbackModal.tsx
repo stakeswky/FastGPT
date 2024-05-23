@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { ModalBody, Textarea, ModalFooter, Button } from '@chakra-ui/react';
-import MyModal from '../MyModal';
-import { useRequest } from '@/web/common/hooks/useRequest';
+import MyModal from '@fastgpt/web/components/common/MyModal';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useTranslation } from 'next-i18next';
 import { updateChatUserFeedback } from '@/web/core/chat/api';
 
@@ -9,6 +9,8 @@ const FeedbackModal = ({
   appId,
   chatId,
   chatItemId,
+  teamId,
+  teamToken,
   shareId,
   outLinkUid,
   onSuccess,
@@ -18,6 +20,8 @@ const FeedbackModal = ({
   chatId: string;
   chatItemId: string;
   shareId?: string;
+  teamId?: string;
+  teamToken?: string;
   outLinkUid?: string;
   onSuccess: (e: string) => void;
   onClose: () => void;
@@ -33,6 +37,8 @@ const FeedbackModal = ({
         chatId,
         chatItemId,
         shareId,
+        teamId,
+        teamToken,
         outLinkUid,
         userBadFeedback: val
       });
@@ -40,8 +46,8 @@ const FeedbackModal = ({
     onSuccess() {
       onSuccess(ref.current?.value || t('core.chat.feedback.No Content'));
     },
-    successToast: t('chat.Feedback Success'),
-    errorToast: t('chat.Feedback Failed')
+    successToast: t('core.chat.Feedback Success'),
+    errorToast: t('core.chat.Feedback Failed')
   });
 
   return (
@@ -49,17 +55,17 @@ const FeedbackModal = ({
       isOpen={true}
       onClose={onClose}
       iconSrc="/imgs/modal/badAnswer.svg"
-      title={t('chat.Feedback Modal')}
+      title={t('core.chat.Feedback Modal')}
     >
       <ModalBody>
-        <Textarea ref={ref} rows={10} placeholder={t('chat.Feedback Modal Tip')} />
+        <Textarea ref={ref} rows={10} placeholder={t('core.chat.Feedback Modal Tip')} />
       </ModalBody>
       <ModalFooter>
         <Button variant={'whiteBase'} mr={2} onClick={onClose}>
-          {t('Cancel')}
+          {t('common.Close')}
         </Button>
         <Button isLoading={isLoading} onClick={mutate}>
-          {t('chat.Feedback Submit')}
+          {t('core.chat.Feedback Submit')}
         </Button>
       </ModalFooter>
     </MyModal>

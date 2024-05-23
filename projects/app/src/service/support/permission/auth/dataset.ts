@@ -10,11 +10,11 @@ export async function authDatasetData({
 }: AuthModeType & {
   dataId: string;
 }) {
-  // get pg data
+  // get mongo dataset.data
   const datasetData = await MongoDatasetData.findById(dataId);
 
   if (!datasetData) {
-    return Promise.reject('Data not found');
+    return Promise.reject('core.dataset.error.Data not found');
   }
 
   const result = await authDatasetCollection({
@@ -24,6 +24,7 @@ export async function authDatasetData({
 
   const data: DatasetDataItemType = {
     id: String(datasetData._id),
+    teamId: datasetData.teamId,
     q: datasetData.q,
     a: datasetData.a,
     chunkIndex: datasetData.chunkIndex,

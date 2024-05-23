@@ -7,12 +7,8 @@ import {
 } from '@fastgpt/global/support/user/team/constant';
 import { DatasetCollectionName } from '../schema';
 import { DatasetColCollectionName } from '../collection/schema';
-import {
-  DatasetDataIndexTypeEnum,
-  DatasetDataIndexTypeMap
-} from '@fastgpt/global/core/dataset/constant';
 
-export const DatasetDataCollectionName = 'dataset.datas';
+export const DatasetDataCollectionName = 'dataset_datas';
 
 const DatasetDataSchema = new Schema({
   teamId: {
@@ -54,11 +50,6 @@ const DatasetDataSchema = new Schema({
           type: Boolean,
           default: false
         },
-        type: {
-          type: String,
-          enum: Object.keys(DatasetDataIndexTypeMap),
-          default: DatasetDataIndexTypeEnum.custom
-        },
         dataId: {
           type: String,
           required: true
@@ -71,6 +62,7 @@ const DatasetDataSchema = new Schema({
     ],
     default: []
   },
+
   updateTime: {
     type: Date,
     default: () => new Date()
@@ -81,20 +73,31 @@ const DatasetDataSchema = new Schema({
   },
   inited: {
     type: Boolean
-  }
+  },
+  rebuilding: Boolean
 });
 
 try {
-  DatasetDataSchema.index({ datasetId: 1 });
-  DatasetDataSchema.index({ collectionId: 1 });
-  DatasetDataSchema.index({ updateTime: -1 });
+  // list collection and count data; list data; delete collection(relate data)
+  DatasetDataSchema.index(
+    { teamId: 1, datasetId: 1, collectionId: 1, chunkIndex: 1, updateTime: -1 },
+    { background: true }
+  );
   // full text index
-  DatasetDataSchema.index({ datasetId: 1, fullTextToken: 'text' });
-  DatasetDataSchema.index({ inited: 1 });
+  DatasetDataSchema.index({ teamId: 1, datasetId: 1, fullTextToken: 'text' }, { background: true });
+  // Recall vectors after data matching
+  DatasetDataSchema.index(
+    { teamId: 1, datasetId: 1, collectionId: 1, 'indexes.dataId': 1 },
+    { background: true }
+  );
+  DatasetDataSchema.index({ updateTime: 1 }, { background: true });
+  // rebuild data
+  DatasetDataSchema.index({ rebuilding: 1, teamId: 1, datasetId: 1 }, { background: true });
 } catch (error) {
   console.log(error);
 }
 
 export const MongoDatasetData: Model<DatasetDataSchemaType> =
   models[DatasetDataCollectionName] || model(DatasetDataCollectionName, DatasetDataSchema);
+
 MongoDatasetData.syncIndexes();

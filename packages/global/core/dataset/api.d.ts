@@ -1,5 +1,5 @@
 import { DatasetDataIndexItemType, DatasetSchemaType } from './type';
-import { DatasetCollectionTrainingModeEnum, DatasetCollectionTypeEnum } from './constant';
+import { TrainingModeEnum, DatasetCollectionTypeEnum } from './constants';
 import type { LLMModelItemType } from '../ai/model.d';
 
 /* ================= dataset ===================== */
@@ -11,33 +11,72 @@ export type DatasetUpdateBody = {
   intro?: string;
   permission?: DatasetSchemaType['permission'];
   agentModel?: LLMModelItemType;
-  websiteConfig?: DatasetSchemaType['websiteConfig'];
   status?: DatasetSchemaType['status'];
+
+  websiteConfig?: DatasetSchemaType['websiteConfig'];
+  externalReadUrl?: DatasetSchemaType['externalReadUrl'];
 };
 
 /* ================= collection ===================== */
-export type CreateDatasetCollectionParams = {
-  datasetId: string;
+export type DatasetCollectionChunkMetadataType = {
   parentId?: string;
-  name: string;
-  type: `${DatasetCollectionTypeEnum}`;
-  trainingType?: `${DatasetCollectionTrainingModeEnum}`;
+  trainingType?: TrainingModeEnum;
   chunkSize?: number;
+  chunkSplitter?: string;
+  qaPrompt?: string;
+  metadata?: Record<string, any>;
+};
+
+// create collection params
+export type CreateDatasetCollectionParams = DatasetCollectionChunkMetadataType & {
+  datasetId: string;
+  name: string;
+  type: DatasetCollectionTypeEnum;
+
+  tags?: string[];
+
   fileId?: string;
   rawLink?: string;
-  qaPrompt?: string;
+  externalFileId?: string;
+
+  externalFileUrl?: string;
   rawTextLength?: number;
   hashRawText?: string;
-  metadata?: Record<string, any>;
+};
+
+export type ApiCreateDatasetCollectionParams = DatasetCollectionChunkMetadataType & {
+  datasetId: string;
+  tags?: string[];
+};
+export type TextCreateDatasetCollectionParams = ApiCreateDatasetCollectionParams & {
+  name: string;
+  text: string;
+};
+export type LinkCreateDatasetCollectionParams = ApiCreateDatasetCollectionParams & {
+  link: string;
+};
+export type FileIdCreateDatasetCollectionParams = ApiCreateDatasetCollectionParams & {
+  fileId: string;
+};
+export type FileCreateDatasetCollectionParams = ApiCreateDatasetCollectionParams & {
+  fileMetadata?: Record<string, any>;
+  collectionMetadata?: Record<string, any>;
+};
+export type CsvTableCreateDatasetCollectionParams = {
+  datasetId: string;
+  parentId?: string;
+  fileId: string;
+};
+export type ExternalFileCreateDatasetCollectionParams = ApiCreateDatasetCollectionParams & {
+  externalFileId?: string;
+  externalFileUrl: string;
+  filename?: string;
 };
 
 /* ================= data ===================== */
 export type PgSearchRawType = {
   id: string;
-  team_id: string;
-  tmb_id: string;
   collection_id: string;
-  data_id: string;
   score: number;
 };
 export type PushDatasetDataChunkProps = {
@@ -50,4 +89,15 @@ export type PushDatasetDataChunkProps = {
 export type PostWebsiteSyncParams = {
   datasetId: string;
   billId: string;
+};
+
+export type PushDatasetDataProps = {
+  collectionId: string;
+  data: PushDatasetDataChunkProps[];
+  trainingMode: TrainingModeEnum;
+  prompt?: string;
+  billId?: string;
+};
+export type PushDatasetDataResponse = {
+  insertLen: number;
 };

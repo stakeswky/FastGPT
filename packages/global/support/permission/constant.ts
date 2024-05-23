@@ -2,7 +2,8 @@ export enum AuthUserTypeEnum {
   token = 'token',
   root = 'root',
   apikey = 'apikey',
-  outLink = 'outLink'
+  outLink = 'outLink',
+  teamDomain = 'teamDomain'
 }
 
 export enum PermissionTypeEnum {
@@ -19,3 +20,9 @@ export const PermissionTypeMap = {
     label: 'permission.Public'
   }
 };
+
+export enum ResourceTypeEnum {
+  team = 'team',
+  app = 'app',
+  dataset = 'dataset'
+}

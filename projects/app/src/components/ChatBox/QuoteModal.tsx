@@ -1,21 +1,21 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { ModalBody, Box, useTheme } from '@chakra-ui/react';
 
-import MyModal from '../MyModal';
+import MyModal from '@fastgpt/web/components/common/MyModal';
 import { useTranslation } from 'next-i18next';
 import type { SearchDataResponseItemType } from '@fastgpt/global/core/dataset/type';
 import QuoteItem from '../core/dataset/QuoteItem';
-import { RawSourceText } from '@/pages/dataset/detail/components/InputDataModal';
+import RawSourceBox from '../core/dataset/RawSourceBox';
 
 const QuoteModal = ({
   rawSearch = [],
   onClose,
-  isShare,
+  showDetail,
   metadata
 }: {
   rawSearch: SearchDataResponseItemType[];
   onClose: () => void;
-  isShare: boolean;
+  showDetail: boolean;
   metadata?: {
     collectionId: string;
     sourceId?: string;
@@ -46,7 +46,7 @@ const QuoteModal = ({
         title={
           <Box>
             {metadata ? (
-              <RawSourceText {...metadata} canView={false} />
+              <RawSourceBox {...metadata} canView={showDetail} />
             ) : (
               <>{t('core.chat.Quote Amount', { amount: rawSearch.length })}</>
             )}
@@ -57,7 +57,7 @@ const QuoteModal = ({
         }
       >
         <ModalBody>
-          <QuoteList rawSearch={filterResults} isShare={isShare} />
+          <QuoteList rawSearch={filterResults} showDetail={showDetail} />
         </ModalBody>
       </MyModal>
     </>
@@ -68,10 +68,10 @@ export default QuoteModal;
 
 export const QuoteList = React.memo(function QuoteList({
   rawSearch = [],
-  isShare
+  showDetail
 }: {
   rawSearch: SearchDataResponseItemType[];
-  isShare: boolean;
+  showDetail: boolean;
 }) {
   const theme = useTheme();
 
@@ -88,7 +88,7 @@ export const QuoteList = React.memo(function QuoteList({
           _hover={{ '& .hover-data': { display: 'flex' } }}
           bg={i % 2 === 0 ? 'white' : 'myWhite.500'}
         >
-          <QuoteItem quoteItem={item} canViewSource={!isShare} linkToDataset={!isShare} />
+          <QuoteItem quoteItem={item} canViewSource={showDetail} linkToDataset={showDetail} />
         </Box>
       ))}
     </>

@@ -1,9 +1,17 @@
-export enum InformTypeEnum {
-  system = 'system'
+export enum InformLevelEnum {
+  'common' = 'common',
+  'important' = 'important',
+  'emergency' = 'emergency'
 }
 
-export const InformTypeMap = {
-  [InformTypeEnum.system]: {
-    label: '系统通知'
+export const InformLevelMap = {
+  [InformLevelEnum.common]: {
+    label: '普通'
+  },
+  [InformLevelEnum.important]: {
+    label: '重要'
+  },
+  [InformLevelEnum.emergency]: {
+    label: '紧急'
   }
 };

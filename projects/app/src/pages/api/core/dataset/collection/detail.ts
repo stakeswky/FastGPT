@@ -8,6 +8,7 @@ import { authDatasetCollection } from '@fastgpt/service/support/permission/auth/
 import { DatasetCollectionItemType } from '@fastgpt/global/core/dataset/type';
 import { BucketNameEnum } from '@fastgpt/global/common/file/constants';
 import { getFileById } from '@fastgpt/service/common/file/gridfs/controller';
+import { getCollectionSourceData } from '@fastgpt/global/core/dataset/collection/utils';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
   try {
@@ -22,6 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const { collection, canWrite } = await authDatasetCollection({
       req,
       authToken: true,
+      authApiKey: true,
       collectionId: id,
       per: 'r'
     });
@@ -35,8 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       data: {
         ...collection,
         canWrite,
-        sourceName: collection?.name,
-        sourceId: collection?.fileId || collection?.rawLink,
+        ...getCollectionSourceData(collection),
         file
       }
     });

@@ -18,7 +18,8 @@ import {
   MenuList,
   MenuItem,
   MenuButton,
-  Menu
+  Menu,
+  IconButton
 } from '@chakra-ui/react';
 import {
   getOpenApiKeys,
@@ -28,24 +29,27 @@ import {
 } from '@/web/support/openapi/api';
 import type { EditApiKeyProps } from '@/global/support/openapi/api.d';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useLoading } from '@/web/common/hooks/useLoading';
+import { useLoading } from '@fastgpt/web/hooks/useLoading';
 import dayjs from 'dayjs';
 import { AddIcon, QuestionOutlineIcon } from '@chakra-ui/icons';
 import { useCopyData } from '@/web/common/hooks/useCopyData';
-import { feConfigs } from '@/web/common/system/staticData';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import MyModal from '@/components/MyModal';
+import MyModal from '@fastgpt/web/components/common/MyModal';
 import { useForm } from 'react-hook-form';
-import { useRequest } from '@/web/common/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import MyTooltip from '@/components/MyTooltip';
 import { getDocPath } from '@/web/common/system/doc';
+import MyMenu from '@fastgpt/web/components/common/MyMenu';
+import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
+import { useI18n } from '@/web/context/I18n';
 
 type EditProps = EditApiKeyProps & { _id?: string };
 const defaultEditData: EditProps = {
   name: '',
   limit: {
-    credit: -1
+    maxUsagePoints: -1
   }
 };
 
@@ -54,12 +58,19 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
   const { Loading } = useLoading();
   const theme = useTheme();
   const { copyData } = useCopyData();
+  const { feConfigs } = useSystemStore();
   const [baseUrl, setBaseUrl] = useState('https://fastgpt.in/api');
   const [editData, setEditData] = useState<EditProps>();
   const [apiKey, setApiKey] = useState('');
+  const { ConfirmModal, openConfirm } = useConfirm({
+    type: 'delete',
+    content: '确认删除该API密钥？删除后该密钥立即失效，对应的对话日志不会删除，请确认！'
+  });
 
   const { mutate: onclickRemove, isLoading: isDeleting } = useMutation({
-    mutationFn: async (id: string) => delOpenApiById(id),
+    mutationFn: async (id: string) => {
+      return delOpenApiById(id);
+    },
     onSuccess() {
       refetch();
     }
@@ -81,7 +92,7 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
         <Box flex={1}>
           <Flex alignItems={'flex-end'}>
             <Box fontSize={['md', 'xl']} fontWeight={'bold'}>
-              API 秘钥管理
+              {t('support.openapi.Api manager')}
             </Box>
             {feConfigs?.docUrl && (
               <Link
@@ -90,7 +101,7 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
                 ml={1}
                 color={'primary.500'}
               >
-                查看文档
+                {t('common.Read document')}
               </Link>
             )}
           </Flex>
@@ -106,10 +117,10 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
           borderRadius={'md'}
           cursor={'pointer'}
           userSelect={'none'}
-          onClick={() => copyData(baseUrl, '已复制 API 地址')}
+          onClick={() => copyData(baseUrl, t('support.openapi.Copy success'))}
         >
           <Box border={theme.borders.md} px={2} borderRadius={'md'} fontSize={'sm'}>
-            API根地址
+            {t('support.openapi.Api baseurl')}
           </Box>
           <Box ml={2} color={'myGray.900'} fontSize={['sm', 'md']}>
             {baseUrl}
@@ -127,7 +138,7 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
               })
             }
           >
-            新建
+            {t('New Create')}
           </Button>
         </Box>
       </Box>
@@ -137,28 +148,31 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
             <Tr>
               <Th>{t('Name')}</Th>
               <Th>Api Key</Th>
-              <Th>已用额度(￥)</Th>
+              <Th>{t('support.outlink.Usage points')}</Th>
               {feConfigs?.isPlus && (
                 <>
-                  <Th>最大额度(￥)</Th>
-                  <Th>过期时间</Th>
+                  <Th>{t('common.Expired Time')}</Th>
                 </>
               )}
 
-              <Th>创建时间</Th>
-              <Th>最后一次使用时间</Th>
+              <Th>{t('common.Create Time')}</Th>
+              <Th>{t('common.Last use time')}</Th>
               <Th />
             </Tr>
           </Thead>
           <Tbody fontSize={'sm'}>
-            {apiKeys.map(({ _id, name, usage, limit, apiKey, createTime, lastUsedTime }) => (
+            {apiKeys.map(({ _id, name, usagePoints, limit, apiKey, createTime, lastUsedTime }) => (
               <Tr key={_id}>
                 <Td>{name}</Td>
                 <Td>{apiKey}</Td>
-                <Td>{usage}</Td>
+                <Td>
+                  {Math.round(usagePoints)}/
+                  {feConfigs?.isPlus && limit?.maxUsagePoints && limit?.maxUsagePoints > -1
+                    ? `${limit?.maxUsagePoints}`
+                    : t('common.Unlimited')}
+                </Td>
                 {feConfigs?.isPlus && (
                   <>
-                    <Td>{limit?.credit && limit?.credit > -1 ? `${limit?.credit}` : '无限制'}</Td>
                     <Td whiteSpace={'pre-wrap'}>
                       {limit?.expiredTime
                         ? dayjs(limit?.expiredTime).format('YYYY/MM/DD\nHH:mm')
@@ -168,38 +182,42 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
                 )}
                 <Td whiteSpace={'pre-wrap'}>{dayjs(createTime).format('YYYY/MM/DD\nHH:mm:ss')}</Td>
                 <Td whiteSpace={'pre-wrap'}>
-                  {lastUsedTime ? dayjs(lastUsedTime).format('YYYY/MM/DD\nHH:mm:ss') : '没有使用过'}
+                  {lastUsedTime
+                    ? dayjs(lastUsedTime).format('YYYY/MM/DD\nHH:mm:ss')
+                    : t('common.Un used')}
                 </Td>
                 <Td>
-                  <Menu autoSelect={false} isLazy>
-                    <MenuButton
-                      _hover={{ bg: 'myWhite.600  ' }}
-                      cursor={'pointer'}
-                      borderRadius={'md'}
-                    >
-                      <MyIcon name={'more'} w={'14px'} p={2} />
-                    </MenuButton>
-                    <MenuList color={'myGray.700'} minW={`120px !important`} zIndex={10}>
-                      <MenuItem
-                        onClick={() =>
+                  <MyMenu
+                    offset={[-50, 5]}
+                    Button={
+                      <IconButton
+                        icon={<MyIcon name={'more'} w={'14px'} />}
+                        name={'more'}
+                        variant={'whitePrimary'}
+                        size={'sm'}
+                        aria-label={''}
+                      />
+                    }
+                    menuList={[
+                      {
+                        label: t('common.Edit'),
+                        icon: 'edit',
+                        onClick: () =>
                           setEditData({
                             _id,
                             name,
                             limit,
                             appId
                           })
-                        }
-                        py={[2, 3]}
-                      >
-                        <MyIcon name={'edit'} w={['14px', '16px']} />
-                        <Box ml={[1, 2]}>{t('common.Edit')}</Box>
-                      </MenuItem>
-                      <MenuItem onClick={() => onclickRemove(_id)} py={[2, 3]}>
-                        <MyIcon name={'delete'} w={['14px', '16px']} />
-                        <Box ml={[1, 2]}>{t('common.Delete')}</Box>
-                      </MenuItem>
-                    </MenuList>
-                  </Menu>
+                      },
+                      {
+                        label: t('common.Delete'),
+                        icon: 'delete',
+                        type: 'danger',
+                        onClick: () => openConfirm(() => onclickRemove(_id))()
+                      }
+                    ]}
+                  />
                 </Td>
               </Tr>
             ))}
@@ -207,6 +225,7 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
         </Table>
         <Loading loading={isGetting || isDeleting} fixed={false} />
       </TableContainer>
+
       {!!editData && (
         <EditKeyModal
           defaultData={editData}
@@ -222,6 +241,7 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
           }}
         />
       )}
+      <ConfirmModal />
       <MyModal
         isOpen={!!apiKey}
         w={['400px', '600px']}
@@ -229,10 +249,10 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
         title={
           <Box>
             <Box fontWeight={'bold'} fontSize={'xl'}>
-              新的 API 秘钥
+              {t('support.openapi.New api key')}
             </Box>
             <Box fontSize={'sm'} color={'myGray.600'}>
-              请保管好你的秘钥，秘钥不会再次展示~
+              {t('support.openapi.New api key tip')}
             </Box>
           </Box>
         }
@@ -278,7 +298,9 @@ function EditKeyModal({
   onEdit: () => void;
 }) {
   const { t } = useTranslation();
+  const { publishT } = useI18n();
   const isEdit = useMemo(() => !!defaultData._id, [defaultData]);
+  const { feConfigs } = useSystemStore();
 
   const {
     register,
@@ -306,13 +328,13 @@ function EditKeyModal({
     <MyModal
       isOpen={true}
       iconSrc="/imgs/modal/key.svg"
-      title={isEdit ? t('outlink.Edit API Key') : t('outlink.Create API Key')}
+      title={isEdit ? publishT('Edit API Key') : publishT('Create API Key')}
     >
       <ModalBody>
         <Flex alignItems={'center'}>
           <Box flex={'0 0 90px'}>{t('Name')}:</Box>
           <Input
-            placeholder={t('openapi.key alias') || 'key alias'}
+            placeholder={publishT('key alias') || 'key alias'}
             maxLength={20}
             {...register('name', {
               required: t('common.Name is empty') || 'Name is empty'
@@ -323,15 +345,15 @@ function EditKeyModal({
           <>
             <Flex alignItems={'center'} mt={4}>
               <Flex flex={'0 0 90px'} alignItems={'center'}>
-                {t('common.Max credit')}:
-                <MyTooltip label={t('common.Max credit tips' || '')}>
+                {t('support.outlink.Max usage points')}:
+                <MyTooltip label={t('support.outlink.Max usage points tip')}>
                   <QuestionOutlineIcon ml={1} />
                 </MyTooltip>
               </Flex>
               <Input
-                {...register('limit.credit', {
+                {...register('limit.maxUsagePoints', {
                   min: -1,
-                  max: 1000,
+                  max: 10000000,
                   valueAsNumber: true,
                   required: true
                 })}
@@ -359,14 +381,14 @@ function EditKeyModal({
 
       <ModalFooter>
         <Button variant={'whiteBase'} mr={3} onClick={onClose}>
-          {t('Cancel')}
+          {t('common.Close')}
         </Button>
 
         <Button
           isLoading={creating || updating}
           onClick={submitShareChat((data) => (isEdit ? onclickUpdate(data) : onclickCreate(data)))}
         >
-          {t('Confirm')}
+          {t('common.Confirm')}
         </Button>
       </ModalFooter>
     </MyModal>

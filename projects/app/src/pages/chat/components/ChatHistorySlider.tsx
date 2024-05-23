@@ -17,12 +17,13 @@ import Avatar from '@/components/Avatar';
 import MyTooltip from '@/components/MyTooltip';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useTranslation } from 'next-i18next';
-import { useConfirm } from '@/web/common/hooks/useConfirm';
+import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import Tabs from '@/components/Tabs';
 import { useUserStore } from '@/web/support/user/useUserStore';
+import { AppListItemType } from '@fastgpt/global/core/app/type';
 import { useQuery } from '@tanstack/react-query';
-import { useAppStore } from '@/web/core/app/store/useAppStore';
 import { TeamMemberRoleEnum } from '@fastgpt/global/support/user/team/constant';
+import { useI18n } from '@/web/context/I18n';
 
 type HistoryItemType = {
   id: string;
@@ -41,6 +42,8 @@ const ChatHistorySlider = ({
   appName,
   appAvatar,
   history,
+  apps = [],
+  confirmClearText,
   activeChatId,
   onChangeChat,
   onDelHistory,
@@ -54,6 +57,8 @@ const ChatHistorySlider = ({
   appAvatar: string;
   history: HistoryItemType[];
   activeChatId: string;
+  apps?: AppListItemType[];
+  confirmClearText: string;
   onChangeChat: (chatId?: string) => void;
   onDelHistory: (e: { chatId: string }) => void;
   onClearHistory: () => void;
@@ -64,37 +69,38 @@ const ChatHistorySlider = ({
   const theme = useTheme();
   const router = useRouter();
   const { t } = useTranslation();
+  const { appT } = useI18n();
+
   const { isPc } = useSystemStore();
-  const { myApps, loadMyApps } = useAppStore();
   const { userInfo } = useUserStore();
 
   const [currentTab, setCurrentTab] = useState<`${TabEnum}`>(TabEnum.history);
 
-  const isShare = useMemo(() => !appId || !userInfo, [appId, userInfo]);
-
+  const showApps = apps?.length > 0;
   // custom title edit
   const { onOpenModal, EditModal: EditTitleModal } = useEditTitle({
-    title: '自定义历史记录标题',
-    placeholder: '如果设置为空，会自动跟随聊天记录。'
+    title: t('core.chat.Custom History Title'),
+    placeholder: t('core.chat.Custom History Title Description')
   });
   const { openConfirm, ConfirmModal } = useConfirm({
-    content: isShare
-      ? t('chat.Confirm to clear share chat history')
-      : t('chat.Confirm to clear history')
+    content: confirmClearText
   });
 
   const concatHistory = useMemo<HistoryItemType[]>(
     () =>
-      !activeChatId ? [{ id: activeChatId, title: t('chat.New Chat') }].concat(history) : history,
+      !activeChatId
+        ? //@ts-ignore
+          [{ id: activeChatId, title: t('core.chat.New Chat') }].concat(history)
+        : history,
     [activeChatId, history, t]
   );
 
   useQuery(['init'], () => {
-    if (isShare) {
+    if (!showApps) {
       setCurrentTab(TabEnum.history);
       return null;
     }
-    return loadMyApps(false);
+    return;
   });
 
   const canRouteToDetail = useMemo(
@@ -113,7 +119,7 @@ const ChatHistorySlider = ({
       whiteSpace={'nowrap'}
     >
       {isPc && (
-        <MyTooltip label={canRouteToDetail ? t('app.App Detail') : ''} offset={[0, 0]}>
+        <MyTooltip label={canRouteToDetail ? appT('App Detail') : ''} offset={[0, 0]}>
           <Flex
             pt={5}
             pb={2}
@@ -138,13 +144,13 @@ const ChatHistorySlider = ({
 
       {/* menu */}
       <Flex w={'100%'} px={[2, 5]} h={'36px'} my={5} alignItems={'center'}>
-        {!isPc && !isShare && (
+        {!isPc && appId && (
           <Tabs
             w={'120px'}
             mr={2}
             list={[
               { label: 'App', id: TabEnum.app },
-              { label: 'chat.History', id: TabEnum.history }
+              { label: t('core.chat.History'), id: TabEnum.history }
             ]}
             activeId={currentTab}
             onChange={(e) => setCurrentTab(e as `${TabEnum}`)}
@@ -160,10 +166,10 @@ const ChatHistorySlider = ({
           overflow={'hidden'}
           onClick={() => onChangeChat()}
         >
-          {t('chat.New Chat')}
+          {t('core.chat.New Chat')}
         </Button>
 
-        {(isPc || isShare) && (
+        {(isPc || !showApps) && (
           <IconButton
             ml={3}
             h={'100%'}
@@ -240,7 +246,7 @@ const ChatHistorySlider = ({
                             }}
                           >
                             <MyIcon mr={2} name={'core/chat/setTopLight'} w={'16px'}></MyIcon>
-                            {item.top ? '取消置顶' : '置顶'}
+                            {item.top ? t('core.chat.Unpin') : t('core.chat.Pin')}
                           </MenuItem>
                         )}
                         {onSetCustomTitle && (
@@ -272,7 +278,7 @@ const ChatHistorySlider = ({
                           }}
                         >
                           <MyIcon mr={2} name={'delete'} w={'16px'}></MyIcon>
-                          删除
+                          {t('common.Delete')}
                         </MenuItem>
                       </MenuList>
                     </Menu>
@@ -284,36 +290,38 @@ const ChatHistorySlider = ({
         )}
         {currentTab === TabEnum.app && !isPc && (
           <>
-            {myApps.map((item) => (
-              <Flex
-                key={item._id}
-                py={2}
-                px={3}
-                mb={3}
-                borderRadius={'md'}
-                alignItems={'center'}
-                {...(item._id === appId
-                  ? {
-                      backgroundColor: 'primary.50 !important',
-                      color: 'primary.600'
-                    }
-                  : {
-                      onClick: () => {
-                        router.replace({
-                          query: {
-                            appId: item._id
-                          }
-                        });
-                        onClose();
+            {Array.isArray(apps) &&
+              apps.map((item) => (
+                <Flex
+                  key={item._id}
+                  py={2}
+                  px={3}
+                  mb={3}
+                  borderRadius={'md'}
+                  alignItems={'center'}
+                  {...(item._id === appId
+                    ? {
+                        backgroundColor: 'primary.50 !important',
+                        color: 'primary.600'
                       }
-                    })}
-              >
-                <Avatar src={item.avatar} w={'24px'} />
-                <Box ml={2} className={'textEllipsis'}>
-                  {item.name}
-                </Box>
-              </Flex>
-            ))}
+                    : {
+                        onClick: () => {
+                          router.replace({
+                            query: {
+                              ...router.query,
+                              appId: item._id
+                            }
+                          });
+                          onClose();
+                        }
+                      })}
+                >
+                  <Avatar src={item.avatar} w={'24px'} />
+                  <Box ml={2} className={'textEllipsis'}>
+                    {item.name}
+                  </Box>
+                </Flex>
+              ))}
           </>
         )}
       </Box>
@@ -336,7 +344,7 @@ const ChatHistorySlider = ({
             borderRadius={'50%'}
             aria-label={''}
           />
-          {t('chat.Exit Chat')}
+          {t('core.chat.Exit Chat')}
         </Flex>
       )}
       <EditTitleModal />

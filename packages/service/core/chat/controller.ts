@@ -1,12 +1,15 @@
-import type { ChatItemType } from '@fastgpt/global/core/chat/type';
+import type { ChatItemType, ChatItemValueItemType } from '@fastgpt/global/core/chat/type';
 import { MongoChatItem } from './chatItemSchema';
 import { addLog } from '../../common/system/log';
+import { ChatItemValueTypeEnum } from '@fastgpt/global/core/chat/constants';
 
 export async function getChatItems({
+  appId,
   chatId,
   limit = 30,
   field
 }: {
+  appId: string;
   chatId?: string;
   limit?: number;
   field: string;
@@ -15,18 +18,42 @@ export async function getChatItems({
     return { history: [] };
   }
 
-  const history = await MongoChatItem.find({ chatId }, field).sort({ _id: -1 }).limit(limit).lean();
+  const history = await MongoChatItem.find({ appId, chatId }, field)
+    .sort({ _id: -1 })
+    .limit(limit)
+    .lean();
 
   history.reverse();
 
+  history.forEach((item) => {
+    // @ts-ignore
+    item.value = adaptStringValue(item.value);
+  });
+
   return { history };
 }
+/* 临时适配旧的对话记录 */
+export const adaptStringValue = (value: any): ChatItemValueItemType[] => {
+  if (typeof value === 'string') {
+    return [
+      {
+        type: ChatItemValueTypeEnum.text,
+        text: {
+          content: value
+        }
+      }
+    ];
+  }
+  return value;
+};
 
 export const addCustomFeedbacks = async ({
+  appId,
   chatId,
   chatItemId,
   feedbacks
 }: {
+  appId: string;
   chatId?: string;
   chatItemId?: string;
   feedbacks: string[];
@@ -36,6 +63,7 @@ export const addCustomFeedbacks = async ({
   try {
     await MongoChatItem.findOneAndUpdate(
       {
+        appId,
         chatId,
         dataId: chatItemId
       },

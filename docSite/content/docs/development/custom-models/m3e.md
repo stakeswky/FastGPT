@@ -4,7 +4,7 @@ description: ' 将 FastGPT 接入私有化模型 M3E'
 icon: 'model_training'
 draft: false
 toc: true
-weight: 920
+weight: 940
 ---
 
 ## 前言
@@ -48,10 +48,10 @@ Authorization 为 sk-key。model 为刚刚在 One API 填写的自定义模型�
 
 ## 接入 FastGPT
 
-修改 config.json 配置文件，在 VectorModels 中加入 M3E 模型：
+修改 config.json 配置文件，在 vectorModels 中加入 M3E 模型：
 
 ```json
-"VectorModels": [
+"vectorModels": [
     {
       "model": "text-embedding-ada-002",
       "name": "Embedding-2",

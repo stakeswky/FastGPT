@@ -15,7 +15,7 @@ const MyIcon = ({ name, w = 'auto', h = 'auto', ...props }: { name: IconNameType
       .catch((error) => console.log(error));
   }, [name]);
 
-  return !!name && !!iconPaths[name] ? (
+  return !!IconComponent ? (
     <Icon
       {...IconComponent}
       w={w}
@@ -28,4 +28,4 @@ const MyIcon = ({ name, w = 'auto', h = 'auto', ...props }: { name: IconNameType
   ) : null;
 };
 
-export default MyIcon;
+export default React.memo(MyIcon);

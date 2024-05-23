@@ -1,6 +1,6 @@
 import React from 'react';
 import { ModalBody, ModalFooter, Button } from '@chakra-ui/react';
-import MyModal from '../MyModal';
+import MyModal from '@fastgpt/web/components/common/MyModal';
 import { useTranslation } from 'next-i18next';
 
 const ReadFeedbackModal = ({
@@ -19,7 +19,7 @@ const ReadFeedbackModal = ({
       isOpen={true}
       onClose={onClose}
       iconSrc="/imgs/modal/readFeedback.svg"
-      title={t('chat.Feedback Modal')}
+      title={t('core.chat.Feedback Modal')}
     >
       <ModalBody>{content}</ModalBody>
       <ModalFooter>

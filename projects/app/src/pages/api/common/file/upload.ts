@@ -3,49 +3,40 @@ import { jsonRes } from '@fastgpt/service/common/response';
 import { connectToDatabase } from '@/service/mongo';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { uploadFile } from '@fastgpt/service/common/file/gridfs/controller';
-import { getUploadModel, removeFilesByPaths } from '@fastgpt/service/common/file/upload/multer';
-
-/**
- * Creates the multer uploader
- */
-const upload = getUploadModel({
-  maxSize: 500 * 1024 * 1024
-});
+import { getUploadModel } from '@fastgpt/service/common/file/multer';
+import { removeFilesByPaths } from '@fastgpt/service/common/file/utils';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
-  let filePaths: string[] = [];
+  /* Creates the multer uploader */
+  const upload = getUploadModel({
+    maxSize: (global.feConfigs?.uploadFileMaxSize || 500) * 1024 * 1024
+  });
+  const filePaths: string[] = [];
 
   try {
-    const { files, bucketName, metadata } = await upload.doUpload(req, res);
-
-    filePaths = files.map((file) => file.path);
-
     await connectToDatabase();
-    const { userId, teamId, tmbId } = await authCert({ req, authToken: true });
+    const { file, bucketName, metadata } = await upload.doUpload(req, res);
+
+    filePaths.push(file.path);
+
+    const { teamId, tmbId } = await authCert({ req, authToken: true });
 
     if (!bucketName) {
       throw new Error('bucketName is empty');
     }
 
-    const upLoadResults = await Promise.all(
-      files.map((file) =>
-        uploadFile({
-          teamId,
-          tmbId,
-          bucketName,
-          path: file.path,
-          filename: file.originalname,
-          metadata: {
-            ...metadata,
-            contentType: file.mimetype,
-            userId
-          }
-        })
-      )
-    );
+    const fileId = await uploadFile({
+      teamId,
+      tmbId,
+      bucketName,
+      path: file.path,
+      filename: file.originalname,
+      contentType: file.mimetype,
+      metadata: metadata
+    });
 
     jsonRes(res, {
-      data: upLoadResults
+      data: fileId
     });
   } catch (error) {
     jsonRes(res, {

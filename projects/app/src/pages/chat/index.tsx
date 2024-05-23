@@ -15,14 +15,15 @@ import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useQuery } from '@tanstack/react-query';
 import { streamFetch } from '@/web/common/api/fetch';
 import { useChatStore } from '@/web/core/chat/storeChat';
-import { useLoading } from '@/web/common/hooks/useLoading';
-import { useToast } from '@/web/common/hooks/useToast';
+import { useLoading } from '@fastgpt/web/hooks/useLoading';
+import { useToast } from '@fastgpt/web/hooks/useToast';
 import { customAlphabet } from 'nanoid';
 const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz1234567890', 12);
 import type { ChatHistoryItemType } from '@fastgpt/global/core/chat/type.d';
 import { useTranslation } from 'next-i18next';
 
-import ChatBox, { type ComponentRef, type StartChatFnProps } from '@/components/ChatBox';
+import ChatBox from '@/components/ChatBox';
+import type { ComponentRef, StartChatFnProps } from '@/components/ChatBox/type.d';
 import PageContainer from '@/components/PageContainer';
 import SideBar from '@/components/SideBar';
 import ChatHistorySlider from './components/ChatHistorySlider';
@@ -33,8 +34,9 @@ import { useUserStore } from '@/web/support/user/useUserStore';
 import { serviceSideProps } from '@/web/common/utils/i18n';
 import { useAppStore } from '@/web/core/app/store/useAppStore';
 import { checkChatSupportSelectFileByChatModels } from '@/web/core/chat/utils';
-import { chatContentReplaceBlock } from '@fastgpt/global/core/chat/utils';
+import { getChatTitleFromChatMessage } from '@fastgpt/global/core/chat/utils';
 import { ChatStatusEnum } from '@fastgpt/global/core/chat/constants';
+import { GPTMessages2Chats } from '@fastgpt/global/core/chat/adapt';
 
 const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
   const router = useRouter();
@@ -72,7 +74,7 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
       const prompts = messages.slice(-2);
       const completionChatId = chatId ? chatId : nanoid();
 
-      const { responseText, responseData } = await streamFetch({
+      const { responseText, responseData, newVariables } = await streamFetch({
         data: {
           messages: prompts,
           variables,
@@ -80,13 +82,10 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
           chatId: completionChatId
         },
         onMessage: generatingMessage,
-        abortSignal: controller
+        abortCtrl: controller
       });
 
-      const newTitle =
-        chatContentReplaceBlock(prompts[0].content).slice(0, 20) ||
-        prompts[1]?.value?.slice(0, 20) ||
-        '新对话';
+      const newTitle = getChatTitleFromChatMessage(GPTMessages2Chats(prompts)[0]);
 
       // new chat
       if (completionChatId !== chatId) {
@@ -124,10 +123,12 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
         history: ChatBoxRef.current?.getChatHistories() || state.history
       }));
 
-      return { responseText, responseData, isNewChat: forbidRefresh.current };
+      return { responseText, responseData, isNewChat: forbidRefresh.current, newVariables };
     },
     [appId, chatId, histories, pushHistory, router, setChatData, updateHistory]
   );
+
+  useQuery(['loadModels'], () => loadMyApps());
 
   // get chat app info
   const loadChatInfo = useCallback(
@@ -145,6 +146,7 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
         const res = await getInitChatInfo({ appId, chatId });
         const history = res.history.map((item) => ({
           ...item,
+          dataId: item.dataId || nanoid(),
           status: ChatStatusEnum.finish
         }));
 
@@ -166,7 +168,7 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
         setLastChatAppId('');
         setLastChatId('');
         toast({
-          title: getErrText(e, '初始化聊天失败'),
+          title: getErrText(e, t('core.chat.Failed to initialize chat')),
           status: 'error'
         });
         if (e?.code === 501) {
@@ -183,7 +185,7 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
       setIsLoading(false);
       return null;
     },
-    [setIsLoading, setChatData, router, setLastChatAppId, setLastChatId, toast]
+    [setIsLoading, setChatData, setLastChatAppId, setLastChatId, toast, t, router]
   );
   // 初始化聊天框
   useQuery(['init', { appId, chatId }], () => {
@@ -210,7 +212,7 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
         if (apps.length === 0) {
           toast({
             status: 'error',
-            title: t('chat.You need to a chat app')
+            title: t('core.chat.You need to a chat app')
           });
           router.replace('/app/list');
         } else {
@@ -251,7 +253,7 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
       {/* pc show myself apps */}
       {isPc && (
         <Box borderRight={theme.borders.base} w={'220px'} flexShrink={0}>
-          <SliderApps appId={appId} />
+          <SliderApps apps={myApps} activeAppId={appId} />
         </Box>
       )}
 
@@ -275,6 +277,8 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
             );
           })(
             <ChatHistorySlider
+              apps={myApps}
+              confirmClearText={t('core.chat.Confirm to clear history')}
               appId={appId}
               appName={chatData.app.name}
               appAvatar={chatData.app.avatar}
@@ -345,10 +349,9 @@ const Chat = ({ appId, chatId }: { appId: string; chatId: string }) => {
                 showEmptyIntro
                 appAvatar={chatData.app.avatar}
                 userAvatar={userInfo?.avatar}
-                userGuideModule={chatData.app?.userGuideModule}
+                chatConfig={chatData.app?.chatConfig}
                 showFileSelector={checkChatSupportSelectFileByChatModels(chatData.app.chatModels)}
                 feedbackType={'user'}
-                onUpdateVariable={(e) => {}}
                 onStartChat={startChat}
                 onDelMessage={(e) => delOneHistoryItem({ ...e, appId, chatId })}
                 appId={appId}
@@ -368,7 +371,7 @@ export async function getServerSideProps(context: any) {
     props: {
       appId: context?.query?.appId || '',
       chatId: context?.query?.chatId || '',
-      ...(await serviceSideProps(context))
+      ...(await serviceSideProps(context, ['file']))
     }
   };
 }

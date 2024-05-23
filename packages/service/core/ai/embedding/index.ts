@@ -1,55 +1,57 @@
+import { VectorModelItemType } from '@fastgpt/global/core/ai/model.d';
 import { getAIApi } from '../config';
+import { countPromptTokens } from '../../../common/string/tiktoken/index';
+import { EmbeddingTypeEnm } from '@fastgpt/global/core/ai/constants';
+import { addLog } from '../../../common/system/log';
 
-export type GetVectorProps = {
-  model: string;
-  input: string | string[];
+type GetVectorProps = {
+  model: VectorModelItemType;
+  input: string;
+  type?: `${EmbeddingTypeEnm}`;
 };
 
 // text to vector
-export async function getVectorsByText({
-  model = 'text-embedding-ada-002',
-  input
-}: GetVectorProps) {
-  if (typeof input === 'string' && !input) {
+export async function getVectorsByText({ model, input, type }: GetVectorProps) {
+  if (!input) {
     return Promise.reject({
       code: 500,
       message: 'input is empty'
     });
-  } else if (Array.isArray(input)) {
-    for (let i = 0; i < input.length; i++) {
-      if (!input[i]) {
-        return Promise.reject({
-          code: 500,
-          message: 'input array is empty'
-        });
-      }
-    }
   }
   if (typeof input === 'string') {
     input = [input];
   }
   try {
-    // 获取 chatAPI
     const ai = getAIApi();
 
-    // 把输入的内容转成向量
+    // input text to vector
     const result = await ai.embeddings
       .create({
-        model,
-        input
+        ...model.defaultConfig,
+        ...(type === EmbeddingTypeEnm.db && model.dbConfig),
+        ...(type === EmbeddingTypeEnm.query && model.queryConfig),
+        model: model.model,
+        input: [input]
       })
       .then(async (res) => {
         if (!res.data) {
-          return Promise.reject('Embedding API 404');
+          addLog.error('Embedding API is not responding', res);
+          return Promise.reject('Embedding API is not responding');
         }
         if (!res?.data?.[0]?.embedding) {
-          console.log(res?.data);
+          console.log(res);
           // @ts-ignore
           return Promise.reject(res.data?.err?.message || 'Embedding API Error');
         }
+
+        const [tokens, vectors] = await Promise.all([
+          countPromptTokens(input),
+          Promise.all(res.data.map((item) => unityDimensional(item.embedding)))
+        ]);
+
         return {
-          tokens: res.usage.total_tokens || 0,
-          vectors: await Promise.all(res.data.map((item) => unityDimensional(item.embedding)))
+          tokens,
+          vectors
         };
       });
 
@@ -63,7 +65,9 @@ export async function getVectorsByText({
 
 function unityDimensional(vector: number[]) {
   if (vector.length > 1536) {
-    console.log(`当前向量维度为: ${vector.length}, 向量维度不能超过 1536, 已自动截取前 1536 维度`);
+    console.log(
+      `The current vector dimension is ${vector.length}, and the vector dimension cannot exceed 1536. The first 1536 dimensions are automatically captured`
+    );
     return vector.slice(0, 1536);
   }
   let resultVector = vector;

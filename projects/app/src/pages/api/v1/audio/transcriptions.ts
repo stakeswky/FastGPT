@@ -1,38 +1,58 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
-import { authCert } from '@fastgpt/service/support/permission/auth/common';
-import { withNextCors } from '@fastgpt/service/common/middle/cors';
-import { getUploadModel, removeFilesByPaths } from '@fastgpt/service/common/file/upload/multer';
+import { getUploadModel } from '@fastgpt/service/common/file/multer';
+import { removeFilesByPaths } from '@fastgpt/service/common/file/utils';
 import fs from 'fs';
 import { getAIApi } from '@fastgpt/service/core/ai/config';
-import { pushWhisperBill } from '@/service/support/wallet/bill/push';
+import { pushWhisperUsage } from '@/service/support/wallet/usage/push';
+import { authChatCert } from '@/service/support/permission/auth/chat';
+import { MongoApp } from '@fastgpt/service/core/app/schema';
+import { OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
+import { NextAPI } from '@/service/middleware/entry';
 
 const upload = getUploadModel({
   maxSize: 2
 });
 
-export default withNextCors(async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
+async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
   let filePaths: string[] = [];
 
   try {
     const {
-      files,
-      metadata: { duration, shareId }
-    } = await upload.doUpload<{ duration: number; shareId?: string }>(req, res);
+      file,
+      data: { appId, duration, shareId, outLinkUid, teamId: spaceTeamId, teamToken }
+    } = await upload.doUpload<
+      OutLinkChatAuthProps & {
+        appId: string;
+        duration: number;
+      }
+    >(req, res);
 
-    filePaths = files.map((file) => file.path);
+    req.body.shareId = shareId;
+    req.body.outLinkUid = outLinkUid;
+    req.body.teamId = spaceTeamId;
+    req.body.teamToken = teamToken;
 
-    const { teamId, tmbId } = await authCert({ req, authToken: true });
+    filePaths = [file.path];
 
     if (!global.whisperModel) {
       throw new Error('whisper model not found');
     }
 
-    const file = files[0];
-
     if (!file) {
       throw new Error('file not found');
     }
+
+    // auth role
+    const { teamId, tmbId } = await authChatCert({ req, authToken: true });
+    // auth app
+    // const app = await MongoApp.findById(appId, 'modules').lean();
+    // if (!app) {
+    //   throw new Error('app not found');
+    // }
+    // if (!whisperConfig?.open) {
+    //   throw new Error('Whisper is not open in the app');
+    // }
 
     const ai = getAIApi();
 
@@ -41,7 +61,7 @@ export default withNextCors(async function handler(req: NextApiRequest, res: Nex
       model: global.whisperModel.model
     });
 
-    pushWhisperBill({
+    pushWhisperUsage({
       teamId,
       tmbId,
       duration
@@ -59,7 +79,9 @@ export default withNextCors(async function handler(req: NextApiRequest, res: Nex
   }
 
   removeFilesByPaths(filePaths);
-});
+}
+
+export default NextAPI(handler);
 
 export const config = {
   api: {

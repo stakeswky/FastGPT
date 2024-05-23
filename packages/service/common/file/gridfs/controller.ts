@@ -3,9 +3,15 @@ import { BucketNameEnum } from '@fastgpt/global/common/file/constants';
 import fsp from 'fs/promises';
 import fs from 'fs';
 import { DatasetFileSchema } from '@fastgpt/global/core/dataset/type';
-import { delImgByFileIdList } from '../image/controller';
+import { MongoFileSchema } from './schema';
+import { detectFileEncoding } from '@fastgpt/global/common/file/tools';
+import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
+import { MongoRawTextBuffer } from '../../buffer/rawText/schema';
+import { readRawContentByFileBuffer } from '../read/utils';
+import { PassThrough } from 'stream';
 
 export function getGFSCollection(bucket: `${BucketNameEnum}`) {
+  MongoFileSchema;
   return connectionMongo.connection.db.collection(`${bucket}.files`);
 }
 export function getGridBucket(bucket: `${BucketNameEnum}`) {
@@ -21,6 +27,7 @@ export async function uploadFile({
   tmbId,
   path,
   filename,
+  contentType,
   metadata = {}
 }: {
   bucketName: `${BucketNameEnum}`;
@@ -28,6 +35,7 @@ export async function uploadFile({
   tmbId: string;
   path: string;
   filename: string;
+  contentType?: string;
   metadata?: Record<string, any>;
 }) {
   if (!path) return Promise.reject(`filePath is empty`);
@@ -44,7 +52,7 @@ export async function uploadFile({
 
   const stream = bucket.openUploadStream(filename, {
     metadata,
-    contentType: metadata?.contentType
+    contentType
   });
 
   // save to gridfs
@@ -96,40 +104,6 @@ export async function delFileByFileIdList({
     }
   }
 }
-// delete file by metadata(datasetId)
-export async function delFileByMetadata({
-  bucketName,
-  datasetId
-}: {
-  bucketName: `${BucketNameEnum}`;
-  datasetId?: string;
-}) {
-  const bucket = getGridBucket(bucketName);
-
-  const files = await bucket
-    .find(
-      {
-        ...(datasetId && { 'metadata.datasetId': datasetId })
-      },
-      {
-        projection: {
-          _id: 1
-        }
-      }
-    )
-    .toArray();
-
-  const idList = files.map((item) => String(item._id));
-
-  // delete img
-  await delImgByFileIdList(idList);
-
-  // delete file
-  await delFileByFileIdList({
-    bucketName,
-    fileIdList: idList
-  });
-}
 
 export async function getDownloadStream({
   bucketName,
@@ -139,6 +113,112 @@ export async function getDownloadStream({
   fileId: string;
 }) {
   const bucket = getGridBucket(bucketName);
+  const stream = bucket.openDownloadStream(new Types.ObjectId(fileId));
+  const copyStream = stream.pipe(new PassThrough());
 
-  return bucket.openDownloadStream(new Types.ObjectId(fileId));
+  /* get encoding */
+  const buffer = await (() => {
+    return new Promise<Buffer>((resolve, reject) => {
+      let tmpBuffer: Buffer = Buffer.from([]);
+
+      stream.on('data', (chunk) => {
+        if (tmpBuffer.length < 20) {
+          tmpBuffer = Buffer.concat([tmpBuffer, chunk]);
+        }
+        if (tmpBuffer.length >= 20) {
+          resolve(tmpBuffer);
+        }
+      });
+      stream.on('end', () => {
+        resolve(tmpBuffer);
+      });
+      stream.on('error', (err) => {
+        reject(err);
+      });
+    });
+  })();
+
+  const encoding = detectFileEncoding(buffer);
+
+  return {
+    fileStream: copyStream,
+    encoding
+    // encoding: 'utf-8'
+  };
 }
+
+export const readFileContentFromMongo = async ({
+  teamId,
+  bucketName,
+  fileId,
+  isQAImport = false
+}: {
+  teamId: string;
+  bucketName: `${BucketNameEnum}`;
+  fileId: string;
+  isQAImport?: boolean;
+}): Promise<{
+  rawText: string;
+  filename: string;
+}> => {
+  // read buffer
+  const fileBuffer = await MongoRawTextBuffer.findOne({ sourceId: fileId }).lean();
+  if (fileBuffer) {
+    return {
+      rawText: fileBuffer.rawText,
+      filename: fileBuffer.metadata?.filename || ''
+    };
+  }
+
+  const [file, { encoding, fileStream }] = await Promise.all([
+    getFileById({ bucketName, fileId }),
+    getDownloadStream({ bucketName, fileId })
+  ]);
+
+  if (!file) {
+    return Promise.reject(CommonErrEnum.fileNotFound);
+  }
+
+  const extension = file?.filename?.split('.')?.pop()?.toLowerCase() || '';
+
+  const fileBuffers = await (() => {
+    return new Promise<Buffer>((resolve, reject) => {
+      let buffer = Buffer.from([]);
+      fileStream.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk]);
+      });
+      fileStream.on('end', () => {
+        resolve(buffer);
+      });
+      fileStream.on('error', (err) => {
+        reject(err);
+      });
+    });
+  })();
+
+  const { rawText } = await readRawContentByFileBuffer({
+    extension,
+    isQAImport,
+    teamId,
+    buffer: fileBuffers,
+    encoding,
+    metadata: {
+      relatedId: fileId
+    }
+  });
+
+  if (rawText.trim()) {
+    MongoRawTextBuffer.create({
+      sourceId: fileId,
+      rawText,
+      metadata: {
+        filename: file.filename
+      }
+    });
+  }
+
+  return {
+    rawText,
+    filename: file.filename
+  };
+};

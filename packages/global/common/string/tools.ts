@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { customAlphabet } from 'nanoid';
 
 /* check string is a web link */
 export function strIsLink(str?: string) {
@@ -27,7 +28,9 @@ export const simpleText = (text = '') => {
 /* 
   replace {{variable}} to value
 */
-export function replaceVariable(text: string, obj: Record<string, string | number>) {
+export function replaceVariable(text: any, obj: Record<string, string | number>) {
+  if (!(typeof text === 'string')) return text;
+
   for (const key in obj) {
     const val = obj[key];
     if (!['string', 'number'].includes(typeof val)) continue;
@@ -36,3 +39,29 @@ export function replaceVariable(text: string, obj: Record<string, string | numbe
   }
   return text || '';
 }
+
+/* replace sensitive text */
+export const replaceSensitiveText = (text: string) => {
+  // 1. http link
+  text = text.replace(/(?<=https?:\/\/)[^\s]+/g, 'xxx');
+  // 2. nx-xxx 全部替换成xxx
+  text = text.replace(/ns-[\w-]+/g, 'xxx');
+
+  return text;
+};
+
+/* Make sure the first letter is definitely lowercase */
+export const getNanoid = (size = 12) => {
+  const firstChar = customAlphabet('abcdefghijklmnopqrstuvwxyz', 1)();
+
+  if (size === 1) return firstChar;
+
+  const randomsStr = customAlphabet(
+    'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
+    size - 1
+  )();
+
+  return `${firstChar}${randomsStr}`;
+};
+
+export const replaceRegChars = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

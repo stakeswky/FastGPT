@@ -94,10 +94,10 @@ export async function parseHeaderCert({
     })();
 
     // auth apikey
-    const { userId, teamId, tmbId, appId: apiKeyAppId = '' } = await authOpenApiKey({ apikey });
+    const { teamId, tmbId, appId: apiKeyAppId = '' } = await authOpenApiKey({ apikey });
 
     return {
-      uid: userId,
+      uid: '',
       teamId,
       tmbId,
       apikey,
@@ -111,8 +111,7 @@ export async function parseHeaderCert({
     }
   }
 
-  const { cookie, token, apikey, rootkey, authorization } = (req.headers ||
-    {}) as ReqHeaderAuthType;
+  const { cookie, token, rootkey, authorization } = (req.headers || {}) as ReqHeaderAuthType;
 
   const { uid, teamId, tmbId, appId, openApiKey, authType } = await (async () => {
     if (authApiKey && authorization) {
@@ -151,22 +150,13 @@ export async function parseHeaderCert({
         authType: AuthUserTypeEnum.root
       };
     }
-    // apikey: abandon
-    if (authApiKey && apikey) {
-      // apikey
-      const parseResult = await authOpenApiKey({ apikey });
-      return {
-        uid: parseResult.userId,
-        teamId: parseResult.teamId,
-        tmbId: parseResult.tmbId,
-        appId: parseResult.appId,
-        openApiKey: parseResult.apikey,
-        authType: AuthUserTypeEnum.apikey
-      };
-    }
 
     return Promise.reject(ERROR_ENUM.unAuthorization);
   })();
+
+  if (!authRoot && (!teamId || !tmbId)) {
+    return Promise.reject(ERROR_ENUM.unAuthorization);
+  }
 
   return {
     userId: String(uid),
@@ -180,10 +170,7 @@ export async function parseHeaderCert({
 
 /* set cookie */
 export const setCookie = (res: NextApiResponse, token: string) => {
-  res.setHeader(
-    'Set-Cookie',
-    `token=${token}; Path=/; HttpOnly; Max-Age=604800; Samesite=Strict; Secure;`
-  );
+  res.setHeader('Set-Cookie', `token=${token}; Path=/; HttpOnly; Max-Age=604800; Samesite=Strict;`);
 };
 /* clear cookie */
 export const clearCookie = (res: NextApiResponse) => {

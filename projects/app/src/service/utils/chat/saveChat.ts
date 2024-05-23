@@ -1,22 +1,33 @@
-import type { ChatItemType } from '@fastgpt/global/core/chat/type.d';
+import type { AIChatItemType, UserChatItemType } from '@fastgpt/global/core/chat/type.d';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
 import { ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
 import { MongoChatItem } from '@fastgpt/service/core/chat/chatItemSchema';
 import { MongoChat } from '@fastgpt/service/core/chat/chatSchema';
 import { addLog } from '@fastgpt/service/common/system/log';
-import { chatContentReplaceBlock } from '@fastgpt/global/core/chat/utils';
+import { getChatTitleFromChatMessage } from '@fastgpt/global/core/chat/utils';
+import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
+import { StoreNodeItemType } from '@fastgpt/global/core/workflow/type';
+import {
+  getAppChatConfig,
+  getGuideModule,
+  splitGuideModule
+} from '@fastgpt/global/core/workflow/utils';
+import { AppChatConfigType } from '@fastgpt/global/core/app/type';
 
 type Props = {
   chatId: string;
   appId: string;
   teamId: string;
   tmbId: string;
+  nodes: StoreNodeItemType[];
+  appChatConfig?: AppChatConfigType;
   variables?: Record<string, any>;
-  updateUseTime: boolean;
+  isUpdateUseTime: boolean;
   source: `${ChatSourceEnum}`;
   shareId?: string;
   outLinkUid?: string;
-  content: [ChatItemType, ChatItemType];
+  content: [UserChatItemType & { dataId?: string }, AIChatItemType & { dataId?: string }];
+  metadata?: Record<string, any>;
 };
 
 export async function saveChat({
@@ -24,76 +35,83 @@ export async function saveChat({
   appId,
   teamId,
   tmbId,
+  nodes,
+  appChatConfig,
   variables,
-  updateUseTime,
+  isUpdateUseTime,
   source,
   shareId,
   outLinkUid,
-  content
+  content,
+  metadata = {}
 }: Props) {
   try {
     const chat = await MongoChat.findOne(
       {
-        chatId,
-        teamId,
-        tmbId,
-        appId
+        appId,
+        chatId
       },
-      '_id'
+      '_id metadata'
     );
 
-    const promise: any[] = [
-      MongoChatItem.insertMany(
+    const metadataUpdate = {
+      ...chat?.metadata,
+      ...metadata
+    };
+    const title = getChatTitleFromChatMessage(content[0]);
+
+    await mongoSessionRun(async (session) => {
+      await MongoChatItem.insertMany(
         content.map((item) => ({
           chatId,
           teamId,
           tmbId,
           appId,
           ...item
-        }))
-      )
-    ];
-
-    const title =
-      chatContentReplaceBlock(content[0].value).slice(0, 20) ||
-      content[1]?.value?.slice(0, 20) ||
-      'Chat';
-
-    if (chat) {
-      promise.push(
-        MongoChat.updateOne(
-          { chatId },
-          {
-            title,
-            updateTime: new Date()
-          }
-        )
+        })),
+        { session }
       );
-    } else {
-      promise.push(
-        MongoChat.create({
-          chatId,
-          teamId,
-          tmbId,
-          appId,
-          variables,
-          title,
-          source,
-          shareId,
-          outLinkUid
-        })
-      );
+
+      if (chat) {
+        chat.title = title;
+        chat.updateTime = new Date();
+        chat.metadata = metadataUpdate;
+        chat.variables = variables || {};
+        await chat.save({ session });
+      } else {
+        const { welcomeText, variables: variableList } = getAppChatConfig({
+          chatConfig: appChatConfig,
+          systemConfigNode: getGuideModule(nodes),
+          isPublicFetch: false
+        });
+
+        await MongoChat.create(
+          [
+            {
+              chatId,
+              teamId,
+              tmbId,
+              appId,
+              variableList,
+              welcomeText,
+              variables,
+              title,
+              source,
+              shareId,
+              outLinkUid,
+              metadata: metadataUpdate
+            }
+          ],
+          { session }
+        );
+      }
+    });
+
+    if (isUpdateUseTime) {
+      await MongoApp.findByIdAndUpdate(appId, {
+        updateTime: new Date()
+      });
     }
-
-    if (updateUseTime && source === ChatSourceEnum.online) {
-      promise.push(
-        MongoApp.findByIdAndUpdate(appId, {
-          updateTime: new Date()
-        })
-      );
-    }
-
-    await Promise.all(promise);
   } catch (error) {
     addLog.error(`update chat history error`, error);
   }

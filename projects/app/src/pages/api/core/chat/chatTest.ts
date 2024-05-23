@@ -1,21 +1,29 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { connectToDatabase } from '@/service/mongo';
 import { sseErrRes } from '@fastgpt/service/common/response';
-import { sseResponseEventEnum } from '@fastgpt/service/common/response/constant';
+import { SseResponseEventEnum } from '@fastgpt/global/core/workflow/runtime/constants';
 import { responseWrite } from '@fastgpt/service/common/response';
-import type { ModuleItemType } from '@fastgpt/global/core/module/type.d';
-import { pushChatBill } from '@/service/support/wallet/bill/push';
-import { BillSourceEnum } from '@fastgpt/global/support/wallet/bill/constants';
-import type { ChatItemType } from '@fastgpt/global/core/chat/type';
+import { pushChatUsage } from '@/service/support/wallet/usage/push';
+import { UsageSourceEnum } from '@fastgpt/global/support/wallet/usage/constants';
+import type {
+  ChatItemType,
+  ChatItemValueItemType,
+  UserChatItemValueItemType
+} from '@fastgpt/global/core/chat/type';
 import { authApp } from '@fastgpt/service/support/permission/auth/app';
-import { dispatchModules } from '@/service/moduleDispatch';
+import { dispatchWorkFlow } from '@fastgpt/service/core/workflow/dispatch';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
-import { getUserAndAuthBalance } from '@fastgpt/service/support/user/controller';
+import { getUserChatInfoAndAuthTeamPoints } from '@/service/support/permission/auth/team';
+import { chatValue2RuntimePrompt } from '@fastgpt/global/core/chat/adapt';
+import { RuntimeEdgeItemType } from '@fastgpt/global/core/workflow/type/edge';
+import { RuntimeNodeItemType } from '@fastgpt/global/core/workflow/runtime/type';
+import { removeEmptyUserInput } from '@fastgpt/global/core/chat/utils';
 
 export type Props = {
   history: ChatItemType[];
-  prompt: string;
-  modules: ModuleItemType[];
+  prompt: UserChatItemValueItemType[];
+  nodes: RuntimeNodeItemType[];
+  edges: RuntimeEdgeItemType[];
   variables: Record<string, any>;
   appId: string;
   appName: string;
@@ -30,14 +38,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.end();
   });
 
-  let { modules = [], history = [], prompt, variables = {}, appName, appId } = req.body as Props;
+  let {
+    nodes = [],
+    edges = [],
+    history = [],
+    prompt,
+    variables = {},
+    appName,
+    appId
+  } = req.body as Props;
   try {
     await connectToDatabase();
-    if (!history || !modules || !prompt) {
+    if (!history || !nodes || !prompt || prompt.length === 0) {
       throw new Error('Prams Error');
     }
-    if (!Array.isArray(modules)) {
-      throw new Error('history is not array');
+    if (!Array.isArray(nodes)) {
+      throw new Error('Nodes is not array');
+    }
+    if (!Array.isArray(edges)) {
+      throw new Error('Edges is not array');
     }
 
     /* user auth */
@@ -50,48 +69,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ]);
 
     // auth balance
-    const user = await getUserAndAuthBalance({
-      tmbId,
-      minBalance: 0
-    });
+    const { user } = await getUserChatInfoAndAuthTeamPoints(tmbId);
 
     /* start process */
-    const { responseData } = await dispatchModules({
+    const { flowResponses, flowUsages, newVariables } = await dispatchWorkFlow({
       res,
       mode: 'test',
       teamId,
       tmbId,
       user,
       appId,
-      modules,
+      runtimeNodes: nodes,
+      runtimeEdges: edges,
       variables,
+      query: removeEmptyUserInput(prompt),
       histories: history,
-      startParams: {
-        userChatInput: prompt
-      },
       stream: true,
-      detail: true
+      detail: true,
+      maxRunTimes: 200
     });
 
     responseWrite({
       res,
-      event: sseResponseEventEnum.answer,
+      event: SseResponseEventEnum.answer,
       data: '[DONE]'
     });
     responseWrite({
       res,
-      event: sseResponseEventEnum.appStreamResponse,
-      data: JSON.stringify(responseData)
+      event: SseResponseEventEnum.flowResponses,
+      data: JSON.stringify(flowResponses)
+    });
+    responseWrite({
+      res,
+      event: SseResponseEventEnum.updateVariables,
+      data: JSON.stringify(newVariables)
     });
     res.end();
 
-    pushChatBill({
+    pushChatUsage({
       appName,
       appId,
       teamId,
       tmbId,
-      source: BillSourceEnum.fastgpt,
-      response: responseData
+      source: UsageSourceEnum.fastgpt,
+      flowUsages
     });
   } catch (err: any) {
     res.status(500);

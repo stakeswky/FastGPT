@@ -7,9 +7,21 @@ toc: true
 weight: 706
 ---
 
+## 部署架构图
+
+![](/imgs/sealos-fastgpt.webp)
+
+## 多模型支持
+
+FastGPT 使用了 one-api 项目来管理模型池，其可以兼容 OpenAI 、Azure 、国内主流模型和本地模型等。
+
+可参考：[Sealos 快速部署 OneAPI](/docs/development/one-api)
+
+
+## 一键部署
 Sealos 的服务器在国外，不需要额外处理网络问题，无需服务器、无需魔法、无需域名，支持高并发 & 动态伸缩。点击以下按钮即可一键部署 👇
 
-[![](https://fastly.jsdelivr.net/gh/labring-actions/templates@main/Deploy-on-Sealos.svg)](https://cloud.sealos.io/?openapp=system-fastdeploy%3FtemplateName%3Dfastgpt)
+<a href="https://template.cloud.sealos.io/deploy?templateName=fastgpt" rel="external" target="_blank"><img src="https://cdn.jsdelivr.net/gh/labring-actions/templates@main/Deploy-on-Sealos.svg" alt="Deploy on Sealos"/></a>
 
 由于需要部署数据库，部署完后需要等待 2~4 分钟才能正常访问。默认用了最低配置，首次访问时会有些慢。
 
@@ -19,11 +31,13 @@ Sealos 的服务器在国外，不需要额外处理网络问题，无需服务�
 
 ![](/imgs/sealos2.png)
 
-> 用户名：`root`
-> 
-> 密码就是刚刚一键部署时设置的环境变量
+### 登录
 
-## 修改配置文件和环境变量
+用户名：`root`
+
+密码是刚刚一键部署时设置的`root_password`
+
+### 修改配置文件和环境变量
 
 在 Sealos 中，你可以打开`应用管理`（App Launchpad）看到部署的 FastGPT，可以打开`数据库`（Database）看到对应的数据库。
 
@@ -35,19 +49,15 @@ Sealos 的服务器在国外，不需要额外处理网络问题，无需服务�
 在 Sealos 上，FastGPT 一共运行了 1 个服务和 2 个数据库，如暂停和删除请注意数据库一同操作。（你可以白天启动，晚上暂停它们，省钱大法）
 {{% /alert %}}
 
-## 更新
+### 更新
 
-点击重启会自动拉取最新镜像更新，请确保镜像`tag`正确。
-
-## 部署架构图
-
-![](/imgs/sealos-fastgpt.webp)
+点击变更或重启会自动拉取镜像更新，请确保镜像`tag`正确。建议不要使用`latest`，改成固定版本号。
 
 ## Sealos 使用
 
 ### 简介
 
-FastGPT 商业版共包含了3个应用（fastgpt, fastgpt-plus, fastgpt-admin）和2个数据库，使用多 Api Key 时候需要安装 OneAPI（一个应用和一个数据库），总计4个应用和3个数据库。
+FastGPT 商业版共包含了2个应用（fastgpt, fastgpt-plus）和2个数据库，使用多 Api Key 时候需要安装 OneAPI（一个应用和一个数据库），总计3个应用和3个数据库。
 
 ![](/imgs/onSealos1.png)
 
@@ -96,6 +106,7 @@ FastGPT 商业版共包含了3个应用（fastgpt, fastgpt-plus, fastgpt-admin�
 
 ```
 SYSTEM_NAME=FastGPT
+SYSTEM_DESCRIPTION=
 SYSTEM_FAVICON=/favicon.ico
 HOME_URL=/app/list
 ```
@@ -112,10 +123,7 @@ SYSTEM_FAVICON 可以是一个网络地址
 
 ![](/imgs/onsealos8.png)
 
-### 管理后台
-
-![](/imgs/onsealos9.png)
-
+### 管理后台(已合并到plus)
 
 ### 商业版镜像配置文件
 

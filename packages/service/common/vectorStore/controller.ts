@@ -2,6 +2,7 @@
 import { PgVector } from './pg/class';
 import { getVectorsByText } from '../../core/ai/embedding';
 import { InsertVectorProps } from './controller.d';
+import { VectorModelItemType } from '@fastgpt/global/core/ai/model.d';
 
 const getVectorObj = () => {
   return new PgVector();
@@ -19,11 +20,12 @@ export const insertDatasetDataVector = async ({
   ...props
 }: InsertVectorProps & {
   query: string;
-  model: string;
+  model: VectorModelItemType;
 }) => {
   const { vectors, tokens } = await getVectorsByText({
     model,
-    input: query
+    input: query,
+    type: 'db'
   });
   const { insertId } = await getVectorObj().insert({
     ...props,
@@ -33,30 +35,5 @@ export const insertDatasetDataVector = async ({
   return {
     tokens,
     insertId
-  };
-};
-
-export const updateDatasetDataVector = async ({
-  id,
-  query,
-  model
-}: {
-  id: string;
-  query: string;
-  model: string;
-}) => {
-  // get vector
-  const { vectors, tokens } = await getVectorsByText({
-    model,
-    input: [query]
-  });
-
-  await getVectorObj().update({
-    id,
-    vectors
-  });
-
-  return {
-    tokens
   };
 };

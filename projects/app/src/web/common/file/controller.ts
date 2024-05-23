@@ -1,21 +1,19 @@
 import { postUploadImg, postUploadFiles } from '@/web/common/file/api';
 import { UploadImgProps } from '@fastgpt/global/common/file/api';
 import { BucketNameEnum } from '@fastgpt/global/common/file/constants';
-import {
-  compressBase64ImgAndUpload as compressBase64ImgAndUploadControl,
-  type CompressImgProps
-} from '@fastgpt/web/common/file/img';
+import { preUploadImgProps } from '@fastgpt/global/common/file/api';
+import { compressBase64Img, type CompressImgProps } from '@fastgpt/web/common/file/img';
 
 /**
  * upload file to mongo gridfs
  */
-export const uploadFiles = ({
-  files,
+export const uploadFile2DB = ({
+  file,
   bucketName,
   metadata = {},
   percentListen
 }: {
-  files: File[];
+  file: File;
   bucketName: `${BucketNameEnum}`;
   metadata?: Record<string, any>;
   percentListen?: (percent: number) => void;
@@ -23,9 +21,7 @@ export const uploadFiles = ({
   const form = new FormData();
   form.append('metadata', JSON.stringify(metadata));
   form.append('bucketName', bucketName);
-  files.forEach((file) => {
-    form.append('file', file, encodeURIComponent(file.name));
-  });
+  form.append('file', file, encodeURIComponent(file.name));
   return postUploadFiles(form, (e) => {
     if (!e.total) return;
 
@@ -34,57 +30,56 @@ export const uploadFiles = ({
   });
 };
 
-export const getUploadMdImgController = ({
-  base64Img,
-  metadata
-}: {
-  base64Img: string;
-  metadata: Record<string, any>;
-}) =>
-  compressBase64ImgAndUpload({
-    base64Img,
-    maxW: 4000,
-    maxH: 4000,
-    maxSize: 1024 * 1024 * 5,
-    metadata
-  });
+export const getUploadBase64ImgController = (
+  props: CompressImgProps & UploadImgProps,
+  retry = 3
+): Promise<string> => {
+  try {
+    return compressBase64ImgAndUpload({
+      maxW: 4000,
+      maxH: 4000,
+      maxSize: 1024 * 1024 * 5,
+      ...props
+    });
+  } catch (error) {
+    if (retry > 0) {
+      return getUploadBase64ImgController(props, retry - 1);
+    }
+    return Promise.reject(error);
+  }
+};
 
 /**
  * compress image. response base64
  * @param maxSize The max size of the compressed image
  */
-export const compressBase64ImgAndUpload = ({
-  expiredTime,
-  metadata,
-  shareId,
-  ...props
-}: UploadImgProps & CompressImgProps) => {
-  return compressBase64ImgAndUploadControl({
-    ...props,
-    uploadController: (base64Img) =>
-      postUploadImg({
-        shareId,
-        base64Img,
-        expiredTime,
-        metadata
-      })
-  });
-};
-export const compressImgFileAndUpload = async ({
-  file,
+export const compressBase64ImgAndUpload = async ({
+  base64Img,
   maxW,
   maxH,
   maxSize,
-  expiredTime,
-  shareId
-}: {
-  file: File;
-  maxW?: number;
-  maxH?: number;
-  maxSize?: number;
-  expiredTime?: Date;
-  shareId?: string;
-}) => {
+  ...props
+}: UploadImgProps & CompressImgProps) => {
+  const compressUrl = await compressBase64Img({
+    base64Img,
+    maxW,
+    maxH,
+    maxSize
+  });
+
+  return postUploadImg({
+    ...props,
+    base64Img: compressUrl
+  });
+};
+
+export const compressImgFileAndUpload = async ({
+  file,
+  ...props
+}: preUploadImgProps &
+  CompressImgProps & {
+    file: File;
+  }) => {
   const reader = new FileReader();
   reader.readAsDataURL(file);
 
@@ -94,16 +89,12 @@ export const compressImgFileAndUpload = async ({
     };
     reader.onerror = (err) => {
       console.log(err);
-      reject('压缩图片异常');
+      reject('Load image error');
     };
   });
 
   return compressBase64ImgAndUpload({
     base64Img,
-    maxW,
-    maxH,
-    maxSize,
-    expiredTime,
-    shareId
+    ...props
   });
 };

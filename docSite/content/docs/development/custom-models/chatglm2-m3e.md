@@ -4,7 +4,7 @@ description: ' 将 FastGPT 接入私有化模型 ChatGLM2和m3e-large'
 icon: 'model_training'
 draft: false
 toc: true
-weight: 930
+weight: 950
 ---
 
 ## 前言
@@ -59,10 +59,10 @@ Authorization 为 sk-aaabbbcccdddeeefffggghhhiiijjjkkk。model 为刚刚在 One 
 
 ## 接入 FastGPT
 
-修改 config.json 配置文件，在 ChatModels 中加入 chatglm2, 在 VectorModels 中加入 M3E 模型：
+修改 config.json 配置文件，在 llmModels 中加入 chatglm2, 在 vectorModels 中加入 M3E 模型：
 
 ```json
-"ChatModels": [
+"llmModels": [
   //其他对话模型
   {
     "model": "chatglm2",
@@ -74,7 +74,7 @@ Authorization 为 sk-aaabbbcccdddeeefffggghhhiiijjjkkk。model 为刚刚在 One 
     "defaultSystemChatPrompt": ""
   }
 ],
-"VectorModels": [
+"vectorModels": [
     {
       "model": "text-embedding-ada-002",
       "name": "Embedding-2",

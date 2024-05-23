@@ -3,7 +3,6 @@ import { OAuthEnum } from './constant';
 export type PostLoginProps = {
   username: string;
   password: string;
-  tmbId?: string;
 };
 
 export type OauthLoginProps = {
@@ -11,7 +10,11 @@ export type OauthLoginProps = {
   code: string;
   callbackUrl: string;
   inviterId?: string;
-  tmbId?: string;
+};
+
+export type WxLoginProps = {
+  inviterId?: string;
+  code: string;
 };
 
 export type FastLoginProps = {

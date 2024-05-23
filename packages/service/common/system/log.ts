@@ -3,9 +3,12 @@ import dayjs from 'dayjs';
 /* add logger */
 export const addLog = {
   log(level: 'info' | 'warn' | 'error', msg: string, obj: Record<string, any> = {}) {
+    const stringifyObj = JSON.stringify(obj);
+    const isEmpty = Object.keys(obj).length === 0;
+
     console.log(
       `[${level.toLocaleUpperCase()}] ${dayjs().format('YYYY-MM-DD HH:mm:ss')} ${msg} ${
-        level !== 'error' ? JSON.stringify(obj) : ''
+        level !== 'error' && !isEmpty ? stringifyObj : ''
       }`
     );
 
@@ -49,6 +52,7 @@ export const addLog = {
   },
   error(msg: string, error?: any) {
     this.log('error', msg, {
+      message: error?.message || error,
       stack: error?.stack,
       ...(error?.config && {
         config: {

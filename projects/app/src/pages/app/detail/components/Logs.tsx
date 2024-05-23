@@ -15,24 +15,30 @@ import {
 } from '@chakra-ui/react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useTranslation } from 'next-i18next';
-import { usePagination } from '@/web/common/hooks/usePagination';
 import { getAppChatLogs } from '@/web/core/app/api';
 import dayjs from 'dayjs';
 import { ChatSourceMap } from '@fastgpt/global/core/chat/constants';
 import { HUMAN_ICON } from '@fastgpt/global/common/system/constants';
 import { AppLogsListItemType } from '@/types/app';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
-import ChatBox, { type ComponentRef } from '@/components/ChatBox';
+import ChatBox from '@/components/ChatBox';
+import type { ComponentRef } from '@/components/ChatBox/type.d';
 import { useQuery } from '@tanstack/react-query';
 import { getInitChatInfo } from '@/web/core/chat/api';
-import Tag from '@/components/Tag';
-import MyModal from '@/components/MyModal';
-import DateRangePicker, { type DateRangeType } from '@/components/DateRangePicker';
+import Tag from '@fastgpt/web/components/common/Tag/index';
+import MyModal from '@fastgpt/web/components/common/MyModal';
 import { addDays } from 'date-fns';
-import MyBox from '@/components/common/MyBox';
+import MyBox from '@fastgpt/web/components/common/MyBox';
+import { usePagination } from '@fastgpt/web/hooks/usePagination';
+import DateRangePicker, { DateRangeType } from '@fastgpt/web/components/common/DateRangePicker';
+import { formatChatValue2InputType } from '@/components/ChatBox/utils';
+import { getNanoid } from '@fastgpt/global/common/string/tools';
+import { useI18n } from '@/web/context/I18n';
 
 const Logs = ({ appId }: { appId: string }) => {
   const { t } = useTranslation();
+  const { appT } = useI18n();
+
   const { isPc } = useSystemStore();
 
   const [dateRange, setDateRange] = useState<DateRangeType>({
@@ -70,10 +76,10 @@ const Logs = ({ appId }: { appId: string }) => {
         {isPc && (
           <>
             <Box fontWeight={'bold'} fontSize={['md', 'xl']} mb={2}>
-              {t('app.Chat logs')}
+              {appT('Chat logs')}
             </Box>
             <Box color={'myGray.500'} fontSize={'sm'}>
-              {t('app.Chat Logs Tips')},{' '}
+              {appT('Chat Logs Tips')},{' '}
               <Box
                 as={'span'}
                 mr={2}
@@ -81,7 +87,7 @@ const Logs = ({ appId }: { appId: string }) => {
                 cursor={'pointer'}
                 onClick={onOpenMarkDesc}
               >
-                {t('chat.Read Mark Description')}
+                {t('core.chat.Read Mark Description')}
               </Box>
             </Box>
           </>
@@ -94,11 +100,11 @@ const Logs = ({ appId }: { appId: string }) => {
           <Thead>
             <Tr>
               <Th>{t('core.app.logs.Source And Time')}</Th>
-              <Th>{t('app.Logs Title')}</Th>
-              <Th>{t('app.Logs Message Total')}</Th>
-              <Th>{t('app.Feedback Count')}</Th>
+              <Th>{appT('Logs Title')}</Th>
+              <Th>{appT('Logs Message Total')}</Th>
+              <Th>{appT('Feedback Count')}</Th>
               <Th>{t('core.app.feedback.Custom feedback')}</Th>
-              <Th>{t('app.Mark Count')}</Th>
+              <Th>{appT('Mark Count')}</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -173,7 +179,7 @@ const Logs = ({ appId }: { appId: string }) => {
         <Flex h={'100%'} flexDirection={'column'} alignItems={'center'} pt={'10vh'}>
           <MyIcon name="empty" w={'48px'} h={'48px'} color={'transparent'} />
           <Box mt={2} color={'myGray.500'}>
-            {t('app.Logs Empty')}
+            {appT('Logs Empty')}
           </Box>
         </Flex>
       )}
@@ -202,9 +208,9 @@ const Logs = ({ appId }: { appId: string }) => {
       <MyModal
         isOpen={isOpenMarkDesc}
         onClose={onCloseMarkDesc}
-        title={t('chat.Mark Description Title')}
+        title={t('core.chat.Mark Description Title')}
       >
-        <ModalBody whiteSpace={'pre-wrap'}>{t('chat.Mark Description')}</ModalBody>
+        <ModalBody whiteSpace={'pre-wrap'}>{t('core.chat.Mark Description')}</ModalBody>
       </MyModal>
     </Flex>
   );
@@ -232,6 +238,7 @@ const DetailLogsModal = ({
       onSuccess(res) {
         const history = res.history.map((item) => ({
           ...item,
+          dataId: item.dataId || getNanoid(),
           status: 'finish' as any
         }));
         ChatBoxRef.current?.resetHistory(history);
@@ -248,8 +255,10 @@ const DetailLogsModal = ({
   const history = useMemo(() => (chat?.history ? chat.history : []), [chat]);
 
   const title = useMemo(() => {
-    return history[history.length - 2]?.value?.slice(0, 8);
+    const { text } = formatChatValue2InputType(history[history.length - 2]?.value);
+    return text?.slice(0, 8);
   }, [history]);
+  const chatModels = chat?.app?.chatModels;
 
   return (
     <>
@@ -287,10 +296,10 @@ const DetailLogsModal = ({
                 <MyIcon name={'history'} w={'14px'} />
                 <Box ml={1}>{`${history.length}条记录`}</Box>
               </Tag>
-              {!!chat?.app?.chatModels && (
+              {!!chatModels && chatModels.length > 0 && (
                 <Tag ml={2} colorSchema={'green'}>
                   <MyIcon name={'core/chat/chatModelTag'} w={'14px'} />
-                  <Box ml={1}>{chat.app.chatModels.join(',')}</Box>
+                  <Box ml={1}>{chatModels.join(',')}</Box>
                 </Tag>
               )}
               <Box flex={1} />
@@ -326,7 +335,7 @@ const DetailLogsModal = ({
             feedbackType={'admin'}
             showMarkIcon
             showVoiceIcon={false}
-            userGuideModule={chat?.app?.userGuideModule}
+            chatConfig={chat?.app?.chatConfig}
             appId={appId}
             chatId={chatId}
           />
